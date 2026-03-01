@@ -37,21 +37,10 @@
         </svg>
         Star
     </span>
-    <span id="starCount" class="star-count">1.2k</span>
+    <span id="starCount" class="star-count">0</span>
 </a>
-<p style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #555; text-align: center;">
-    Please support me on GitHub
+<p
+    style="position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%); font-size: 10px; color: #555; text-align: center;">
+    Support me on GitHub
 </p>
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const currentPath = window.location.pathname;
-        const navLinks = document.querySelectorAll('.sidebar-nav .sidebar-link[href]');
-
-        navLinks.forEach((link) => {
-            const linkPath = link.getAttribute('href');
-            if (linkPath === currentPath) {
-                link.classList.add('active');
-            }
-        });
-    });
-</script>
+<%- include('sidebar-nav-scripts') %>
