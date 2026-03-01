@@ -529,29 +529,6 @@ document.addEventListener('DOMContentLoaded', (event) => {
         systemPromptTextarea.value = systemPromptTextarea.value.replace(/\\n/g, '\n');
     }
 
-    // Tag Cache TTL Help Tooltip
-    const tagCacheTTLHelp = document.getElementById('tagCacheTTLHelp');
-    if (tagCacheTTLHelp) {
-        tagCacheTTLHelp.addEventListener('click', () => {
-            Swal.fire({
-                icon: 'info',
-                title: 'Tag Cache Lifetime',
-                html: `
-                    <div class="text-left space-y-2">
-                        <p>Controls how long tags are cached before refreshing from Paperless-ngx.</p>
-                        <ul class="list-disc pl-5 space-y-1">
-                            <li><strong>Lower values (60-180s):</strong> More API calls, always fresh data</li>
-                            <li><strong>Recommended (300s/5min):</strong> Balanced performance and freshness</li>
-                            <li><strong>Higher values (600-3600s):</strong> Fewer API calls, slight delay for new tags</li>
-                        </ul>
-                        <p class="text-sm text-gray-500 mt-2">During batch processing, a good cache can reduce API calls by ~95%.</p>
-                    </div>
-                `,
-                showConfirmButton: true
-            });
-        });
-    }
-
     // Clear Tag Cache Button Handler
     const clearTagCacheBtn = document.getElementById('clearTagCacheBtn');
     if (clearTagCacheBtn) {
@@ -765,7 +742,7 @@ class TooltipManager {
             allowHTML: true,
             placement: this.getTooltipPlacement(),
             interactive: true,
-            theme: 'custom',
+            theme: 'light-border',
             maxWidth: 450,
             touch: 'hold',
             trigger: 'mouseenter click',
@@ -779,46 +756,160 @@ class TooltipManager {
 
     getTooltipContent() {
         return `
-            <div class="p-4 space-y-4">
-                <h3 class="text-lg font-bold">API URL Configuration</h3>
+            <div style="background:#ffffff;color:#111827;padding:12px;border-radius:8px;line-height:1.45;">
+                <h3 style="font-size:16px;font-weight:700;margin-bottom:8px;">API URL Configuration</h3>
                 
-                <div class="space-y-2">
+                <div style="margin-bottom:10px;">
                     <p>The URL should follow this format:</p>
-                    <code class="block p-2 bg-gray-100 dark:bg-gray-800 rounded">
+                    <code style="display:block;padding:8px;background:#f3f4f6;border-radius:6px;color:#111827;">
                         http://your-host:8000
                     </code>
                 </div>
                 
-                <div class="space-y-2">
-                    <p class="font-semibold">Important Notes:</p>
-                    <ul class="list-disc pl-4 space-y-1">
+                <div style="margin-bottom:10px;">
+                    <p style="font-weight:600;">Important Notes:</p>
+                    <ul style="padding-left:18px;margin-top:4px;">
                         <li>Must start with <u>http://</u> or <u>https://</u></li>
                         <li>Contains <strong>host/IP</strong> and optionally a <strong>port</strong></li>
                         <li>No additional paths or parameters</li>
                     </ul>
                 </div>
 
-                <div class="space-y-2">
-                    <p class="font-semibold">Docker Network Configuration:</p>
-                    <ul class="list-disc pl-4 space-y-1">
+                <div style="margin-bottom:10px;">
+                    <p style="font-weight:600;">Docker Network Configuration:</p>
+                    <ul style="padding-left:18px;margin-top:4px;">
                         <li>Using <strong>localhost</strong> or <strong>127.0.0.1</strong> won't work in Docker bridge mode</li>
                         <li>Use your machine's local IP (e.g., <code>192.168.1.x</code>) instead</li>
                         <li>Or use the Docker container name if both services are in the same network</li>
                     </ul>
                 </div>
 
-                <div class="space-y-2">
-                    <p class="font-semibold">Examples:</p>
-                    <ul class="list-none space-y-1">
+                <div style="margin-bottom:10px;">
+                    <p style="font-weight:600;">Examples:</p>
+                    <ul style="list-style:none;padding-left:0;margin-top:4px;">
                         <li>🔸 Local IP: <code>http://192.168.1.100:8000</code></li>
                         <li>🔸 Container: <code>http://paperless-ngx:8000</code></li>
                         <li>🔸 Remote: <code>http://paperless.domain.com</code></li>
                     </ul>
                 </div>
 
-                <p class="text-sm italic mt-4">The /api endpoint will be added automatically.</p>
+                <p style="font-size:12px;font-style:italic;margin-top:8px;">The /api endpoint will be added automatically.</p>
             </div>
         `;
+    }
+}
+
+class SettingsHintManager {
+    constructor() {
+        this.initialize();
+    }
+
+    initialize() {
+        const hintRows = Array.from(document.querySelectorAll('#setupForm p.text-xs.text-gray-500'));
+        const tooltipTargets = [];
+
+        hintRows.forEach((hint) => {
+            const container = hint.closest('.space-y-2') || hint.parentElement;
+            if (!container) {
+                return;
+            }
+
+            const label = container.querySelector('label');
+            if (!label) {
+                return;
+            }
+
+            if (label.querySelector('.setting-hint-trigger')) {
+                hint.classList.add('hidden');
+                return;
+            }
+
+            const trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'setting-hint-trigger inline-flex items-center justify-center ml-2 text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full transition-colors';
+            trigger.setAttribute('aria-label', 'Show setting hint');
+            trigger.style.width = '1.125rem';
+            trigger.style.height = '1.125rem';
+            trigger.style.minWidth = '1.125rem';
+            trigger.style.minHeight = '1.125rem';
+            trigger.innerHTML = '<i class="fas fa-circle-question" style="font-size:0.875rem;line-height:1;"></i>';
+            trigger.dataset.hintContent = hint.innerHTML;
+
+            if (!label.classList.contains('flex')) {
+                label.classList.add('flex', 'items-center');
+            }
+
+            label.appendChild(trigger);
+            hint.classList.add('hidden');
+            tooltipTargets.push(trigger);
+        });
+
+        if (tooltipTargets.length > 0) {
+            tippy(tooltipTargets, {
+                allowHTML: true,
+                placement: window.innerWidth < 768 ? 'bottom' : 'right',
+                interactive: true,
+                theme: 'light-border',
+                maxWidth: 360,
+                touch: 'hold',
+                appendTo: () => document.body,
+                content(reference) {
+                    return `<div style="padding:8px 10px;line-height:1.4;color:#111827;">${reference.dataset.hintContent || ''}</div>`;
+                }
+            });
+        }
+
+        this.initializeTagCacheHint();
+    }
+
+    initializeTagCacheHint() {
+        const tagCacheTTLHelp = document.getElementById('tagCacheTTLHelp');
+        if (!tagCacheTTLHelp) {
+            return;
+        }
+
+        tagCacheTTLHelp.classList.add(
+            'inline-flex',
+            'items-center',
+            'justify-center',
+            'text-gray-400',
+            'hover:text-gray-600',
+            'focus:outline-none',
+            'focus:ring-2',
+            'focus:ring-blue-500',
+            'rounded-full',
+            'transition-colors'
+        );
+        tagCacheTTLHelp.style.width = '1.125rem';
+        tagCacheTTLHelp.style.height = '1.125rem';
+        tagCacheTTLHelp.style.minWidth = '1.125rem';
+        tagCacheTTLHelp.style.minHeight = '1.125rem';
+
+        const tagCacheIcon = tagCacheTTLHelp.querySelector('i');
+        if (tagCacheIcon) {
+            tagCacheIcon.style.fontSize = '0.875rem';
+            tagCacheIcon.style.lineHeight = '1';
+        }
+
+        tippy(tagCacheTTLHelp, {
+            allowHTML: true,
+            placement: window.innerWidth < 768 ? 'bottom' : 'right',
+            interactive: true,
+            theme: 'light-border',
+            maxWidth: 420,
+            touch: 'hold',
+            content: `
+                <div style="padding:10px 12px;line-height:1.45;color:#111827;">
+                    <p style="margin-bottom:8px;">Controls how long tags are cached before refreshing from Paperless-ngx.</p>
+                    <ul style="padding-left:18px; margin:0 0 8px 0;">
+                        <li><strong>60-180s:</strong> fresher data, more API calls</li>
+                        <li><strong>300s (recommended):</strong> balanced</li>
+                        <li><strong>600-3600s:</strong> fewer API calls, slower visibility of new tags</li>
+                    </ul>
+                    <p style="font-size:12px;">Good cache settings can reduce Paperless tag API calls significantly during batch processing.</p>
+                </div>
+            `
+        });
     }
 }
 
@@ -826,6 +917,7 @@ class TooltipManager {
 document.addEventListener('DOMContentLoaded', () => {
     const urlValidator = new URLValidator();
     const tooltipManager = new TooltipManager();
+    const settingsHintManager = new SettingsHintManager();
 });
 
 
