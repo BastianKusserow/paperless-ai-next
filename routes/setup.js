@@ -1430,8 +1430,6 @@ router.get('/api/history', isAuthenticated, async (req, res) => {
     // Get tags from centralized cache
     const allTags = await paperlessService.getTags();
     const tagMap = new Map(allTags.map(tag => [tag.id, tag]));
-    const baseURL = process.env.PAPERLESS_API_URL.replace(/\/api$/, '');
-
     // Format documents with tag resolution
     const formattedDocs = docs.map(doc => {
       const tagIds = doc.tags === '[]' ? [] : JSON.parse(doc.tags || '[]');
@@ -1444,7 +1442,7 @@ router.get('/api/history', isAuthenticated, async (req, res) => {
         created_at: doc.created_at,
         tags: resolvedTags,
         correspondent: doc.correspondent || 'Not assigned',
-        link: `${baseURL}/documents/${doc.document_id}/`
+        link: `/dashboard/doc/${doc.document_id}`
       };
     });
 
@@ -1628,8 +1626,6 @@ router.get('/api/history/:id/detail', isAuthenticated, async (req, res) => {
       };
     }
 
-    const baseURL = process.env.PAPERLESS_API_URL.replace(/\/api$/, '');
-
     res.json({
       success: true,
       document_id: documentId,
@@ -1652,7 +1648,7 @@ router.get('/api/history/:id/detail', isAuthenticated, async (req, res) => {
         totalTokens:      metrics.totalTokens
       } : null,
       original: originalData,
-      link: `${baseURL}/documents/${documentId}/`
+      link: `/dashboard/doc/${documentId}`
     });
   } catch (error) {
     console.error('[ERROR] /api/history/:id/detail:', error);
@@ -1772,6 +1768,26 @@ router.post('/api/settings/clear-tag-cache', isAuthenticated, cacheClearLimiter,
     res.status(500).json({ 
       success: false, 
       error: 'Failed to clear tag cache' 
+    });
+  }
+});
+
+router.post('/api/settings/reset-local-overrides', isAuthenticated, cacheClearLimiter, async (req, res) => {
+  try {
+    const hadOverrides = await setupService.clearRuntimeOverrides();
+
+    res.json({
+      success: true,
+      hadOverrides,
+      message: hadOverrides
+        ? 'Local runtime overrides have been removed. Restart the container to apply injected environment values.'
+        : 'No local runtime overrides were found. Restart the container to reload injected environment values.'
+    });
+  } catch (error) {
+    console.error('[ERROR] resetting local runtime overrides:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reset local runtime overrides'
     });
   }
 });
@@ -2409,6 +2425,10 @@ router.post('/api/key-regenerate', async (req, res) => {
 
     // Setze die Umgebungsvariable für den aktuellen Prozess
     process.env.API_KEY = apiKey;
+    await setupService.saveRuntimeOverrides({
+      ...(await setupService.loadRuntimeOverrides()),
+      API_KEY: apiKey
+    });
 
     // Sende die Antwort zurück
     res.json({ success: true, newKey: apiKey });
@@ -3324,6 +3344,40 @@ router.get('/settings', async (req, res) => {
 
   let showErrorCheckSettings = false;
   const isConfigured = await setupService.isConfigured();
+  const runtimeOverrides = await setupService.loadRuntimeOverrides();
+  const injectedEnvSnapshot = global.__PAPERLESS_AI_INJECTED_ENV_SNAPSHOT__ || {};
+  const secretKeys = new Set(SETTINGS_SECRET_FIELDS);
+
+  const formatValueForTooltip = (key, value) => {
+    const normalizedValue = value == null ? '' : String(value);
+    if (secretKeys.has(key)) {
+      return normalizedValue ? '[hidden]' : '[empty]';
+    }
+    return normalizedValue === '' ? '[empty]' : normalizedValue;
+  };
+
+  const runtimeOverrideDetails = {};
+  const runtimeOverrideKeys = new Set(
+    Object.keys(runtimeOverrides || {}).filter((key) => {
+      const hasInjectedValue = Object.prototype.hasOwnProperty.call(injectedEnvSnapshot, key);
+      if (!hasInjectedValue) {
+        return false;
+      }
+
+      const injectedValue = injectedEnvSnapshot[key] == null ? '' : String(injectedEnvSnapshot[key]);
+      const overrideValue = runtimeOverrides[key] == null ? '' : String(runtimeOverrides[key]);
+      const isOverwritten = injectedValue !== overrideValue;
+
+      if (isOverwritten) {
+        runtimeOverrideDetails[key] = {
+          injected: formatValueForTooltip(key, injectedValue),
+          override: formatValueForTooltip(key, overrideValue)
+        };
+      }
+
+      return isOverwritten;
+    })
+  );
   if(!isConfigured && process.env.PAPERLESS_AI_INITIAL_SETUP === 'yes') {
     showErrorCheckSettings = true;
   }
@@ -3421,6 +3475,8 @@ router.get('/settings', async (req, res) => {
     chatEnabled: isChatEnabled(),
     config,
     configuredSecrets,
+    runtimeOverrideKeys: Array.from(runtimeOverrideKeys),
+    runtimeOverrideDetails,
     success: isConfigured ? 'The application is already configured. You can update the configuration below.' : undefined,
     settingsError: showErrorCheckSettings ? 'Please check your settings. Something is not working correctly.' : undefined
   });

@@ -656,6 +656,14 @@
 
                             <section class="space-y-4 border-t pt-4">
                                 <h3 class="text-lg font-semibold">Runtime Controls</h3>
+                                <div class="space-y-2">
+                                    <p class="text-sm text-gray-600">Reset local runtime overrides to fall back to your container-injected environment values on next restart.</p>
+                                    <button type="button" id="resetLocalOverridesBtn" data-runtime-override-keys="<%- JSON.stringify(runtimeOverrideKeys || []).replace(/\"/g, '&quot;') %>" data-runtime-override-details="<%- JSON.stringify(runtimeOverrideDetails || {}).replace(/\"/g, '&quot;') %>" class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition-colors duration-200 flex items-center gap-2">
+                                        <i class="fas fa-rotate-left"></i>
+                                        <span>Reset Local Runtime Overrides</span>
+                                    </button>
+                                    <p class="text-xs text-gray-500">Removes local override file only (`data/runtime-overrides.json`). A container restart is required to apply injected ENV values.</p>
+                                </div>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="space-y-2">
                                         <label for="globalRateLimitWindowMs" class="text-sm font-medium">Global rate-limit window (ms)</label>

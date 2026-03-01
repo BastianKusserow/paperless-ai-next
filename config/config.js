@@ -1,8 +1,40 @@
 const path = require('path');
+const fs = require('fs');
 const currentDir = decodeURIComponent(process.cwd());
 const envPath = path.join(currentDir, 'data', '.env');
+const runtimeOverridesPath = path.join(currentDir, 'data', 'runtime-overrides.json');
+
+if (!global.__PAPERLESS_AI_INJECTED_ENV_SNAPSHOT__) {
+  global.__PAPERLESS_AI_INJECTED_ENV_SNAPSHOT__ = { ...process.env };
+}
+
 console.log('Loading .env from:', envPath); // Debug log
 require('dotenv').config({ path: envPath });
+
+const applyRuntimeOverrides = () => {
+  try {
+    if (!fs.existsSync(runtimeOverridesPath)) {
+      return;
+    }
+
+    const content = fs.readFileSync(runtimeOverridesPath, 'utf8');
+    const overrides = JSON.parse(content);
+
+    if (!overrides || typeof overrides !== 'object') {
+      return;
+    }
+
+    Object.entries(overrides).forEach(([key, value]) => {
+      process.env[key] = value == null ? '' : String(value);
+    });
+
+    console.log('Applied runtime overrides from:', runtimeOverridesPath);
+  } catch (error) {
+    console.error('Failed to apply runtime overrides:', error.message);
+  }
+};
+
+applyRuntimeOverrides();
 
 // Helper function to parse boolean-like env vars
 const parseEnvBoolean = (value, defaultValue = 'yes') => {

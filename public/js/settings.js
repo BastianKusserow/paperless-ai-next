@@ -564,6 +564,58 @@ function initializeFormHandlers() {
         });
     }
 
+    const resetLocalOverridesBtn = document.getElementById('resetLocalOverridesBtn');
+    if (resetLocalOverridesBtn) {
+        resetLocalOverridesBtn.addEventListener('click', async () => {
+            const confirmResult = await Swal.fire({
+                icon: 'warning',
+                title: 'Reset local runtime overrides?',
+                text: 'This removes local overrides. Injected container environment values are applied after restart.',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+                confirmButtonText: 'Yes, reset overrides'
+            });
+
+            if (!confirmResult.isConfirmed) {
+                return;
+            }
+
+            const originalHtml = resetLocalOverridesBtn.innerHTML;
+            try {
+                resetLocalOverridesBtn.disabled = true;
+                resetLocalOverridesBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Resetting...';
+
+                const response = await fetch('/api/settings/reset-local-overrides', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    throw new Error(result.error || 'Failed to reset local runtime overrides');
+                }
+
+                await Swal.fire({
+                    icon: 'success',
+                    title: 'Local overrides reset',
+                    text: result.message || 'Local runtime overrides were removed. Restart the container to apply injected environment values.'
+                });
+            } catch (error) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Reset failed',
+                    text: error.message
+                });
+            } finally {
+                resetLocalOverridesBtn.disabled = false;
+                resetLocalOverridesBtn.innerHTML = originalHtml;
+            }
+        });
+    }
+
     // Form submission handler
     const setupForm = document.getElementById('setupForm');
     if (!setupForm) {
@@ -1029,6 +1081,151 @@ function initializeTooltipAndValidation() {
     const settingsHintManager = new SettingsHintManager();
 }
 
+function initializeRuntimeOverridePills() {
+    const resetLocalOverridesBtn = document.getElementById('resetLocalOverridesBtn');
+    let parsedOverrideKeys = [];
+    let parsedOverrideDetails = {};
+
+    if (resetLocalOverridesBtn?.dataset?.runtimeOverrideKeys) {
+        try {
+            parsedOverrideKeys = JSON.parse(resetLocalOverridesBtn.dataset.runtimeOverrideKeys);
+        } catch (error) {
+            console.warn('Failed to parse runtime override keys:', error);
+        }
+    }
+
+    if (resetLocalOverridesBtn?.dataset?.runtimeOverrideDetails) {
+        try {
+            parsedOverrideDetails = JSON.parse(resetLocalOverridesBtn.dataset.runtimeOverrideDetails);
+        } catch (error) {
+            console.warn('Failed to parse runtime override details:', error);
+        }
+    }
+
+    const overrideKeys = new Set(Array.isArray(parsedOverrideKeys) ? parsedOverrideKeys : []);
+    if (overrideKeys.size === 0) {
+        return;
+    }
+
+    const escapeHtml = (value) => String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const fieldMappings = [
+        { selector: '#paperlessUrl', envKey: 'PAPERLESS_API_URL' },
+        { selector: '#paperlessPublicUrl', envKey: 'PAPERLESS_PUBLIC_URL' },
+        { selector: '#paperlessToken', envKey: 'PAPERLESS_API_TOKEN' },
+        { selector: '#paperlessUsername', envKey: 'PAPERLESS_USERNAME' },
+        { selector: '#scanInterval', envKey: 'SCAN_INTERVAL' },
+        { selector: '#useExistingData', envKey: 'USE_EXISTING_DATA' },
+        { selector: '#showTags', envKey: 'PROCESS_PREDEFINED_DOCUMENTS' },
+        { selector: '#ignoreTagInput', envKey: 'IGNORE_TAGS' },
+        { selector: '#disableAutomaticProcessing', envKey: 'DISABLE_AUTOMATIC_PROCESSING' },
+        { selector: '#aiProvider', envKey: 'AI_PROVIDER' },
+        { selector: '#openaiKey', envKey: 'OPENAI_API_KEY' },
+        { selector: '#openaiModel', envKey: 'OPENAI_MODEL' },
+        { selector: '#ollamaUrl', envKey: 'OLLAMA_API_URL' },
+        { selector: '#ollamaModel', envKey: 'OLLAMA_MODEL' },
+        { selector: '#customBaseUrl', envKey: 'CUSTOM_BASE_URL' },
+        { selector: '#customApiKey', envKey: 'CUSTOM_API_KEY' },
+        { selector: '#customModel', envKey: 'CUSTOM_MODEL' },
+        { selector: '#azureEndpoint', envKey: 'AZURE_ENDPOINT' },
+        { selector: '#azureApiKey', envKey: 'AZURE_API_KEY' },
+        { selector: '#azureDeploymentName', envKey: 'AZURE_DEPLOYMENT_NAME' },
+        { selector: '#azureApiVersion', envKey: 'AZURE_API_VERSION' },
+        { selector: '#tokenLimit', envKey: 'TOKEN_LIMIT' },
+        { selector: '#responseTokens', envKey: 'RESPONSE_TOKENS' },
+        { selector: '#aiProcessedTag', envKey: 'ADD_AI_PROCESSED_TAG' },
+        { selector: '#aiTagName', envKey: 'AI_PROCESSED_TAG_NAME' },
+        { selector: '#usePromptTags', envKey: 'USE_PROMPT_TAGS' },
+        { selector: '#systemPrompt', envKey: 'SYSTEM_PROMPT' },
+        { selector: '#restrictToExistingTags', envKey: 'RESTRICT_TO_EXISTING_TAGS' },
+        { selector: '#restrictToExistingCorrespondents', envKey: 'RESTRICT_TO_EXISTING_CORRESPONDENTS' },
+        { selector: '#restrictToExistingDocumentTypes', envKey: 'RESTRICT_TO_EXISTING_DOCUMENT_TYPES' },
+        { selector: '#externalApiEnabled', envKey: 'EXTERNAL_API_ENABLED' },
+        { selector: '#externalApiUrl', envKey: 'EXTERNAL_API_URL' },
+        { selector: '#externalApiMethod', envKey: 'EXTERNAL_API_METHOD' },
+        { selector: '#externalApiHeaders', envKey: 'EXTERNAL_API_HEADERS' },
+        { selector: '#externalApiBody', envKey: 'EXTERNAL_API_BODY' },
+        { selector: '#externalApiTimeout', envKey: 'EXTERNAL_API_TIMEOUT' },
+        { selector: '#externalApiTransform', envKey: 'EXTERNAL_API_TRANSFORM' },
+        { selector: '#activateTagging', envKey: 'ACTIVATE_TAGGING' },
+        { selector: '#activateCorrespondents', envKey: 'ACTIVATE_CORRESPONDENTS' },
+        { selector: '#activateDocumentType', envKey: 'ACTIVATE_DOCUMENT_TYPE' },
+        { selector: '#activateTitle', envKey: 'ACTIVATE_TITLE' },
+        { selector: '#activateCustomFields', envKey: 'ACTIVATE_CUSTOM_FIELDS' },
+        { selector: '#customFieldsJson', envKey: 'CUSTOM_FIELDS' },
+        { selector: '#mistralOcrEnabled', envKey: 'MISTRAL_OCR_ENABLED' },
+        { selector: '#mistralApiKey', envKey: 'MISTRAL_API_KEY' },
+        { selector: '#mistralOcrModel', envKey: 'MISTRAL_OCR_MODEL' },
+        { selector: '#tagCacheTTL', envKey: 'TAG_CACHE_TTL_SECONDS' },
+        { selector: '#ragServiceEnabled', envKey: 'RAG_SERVICE_ENABLED' },
+        { selector: '#ragServiceUrl', envKey: 'RAG_SERVICE_URL' },
+        { selector: '#globalRateLimitWindowMs', envKey: 'GLOBAL_RATE_LIMIT_WINDOW_MS' },
+        { selector: '#globalRateLimitMax', envKey: 'GLOBAL_RATE_LIMIT_MAX' },
+        { selector: '#trustProxy', envKey: 'TRUST_PROXY' },
+        { selector: '#minContentLength', envKey: 'MIN_CONTENT_LENGTH' },
+        { selector: '#paperlessAiPort', envKey: 'PAPERLESS_AI_PORT' },
+        { selector: '#externalApiAllowPrivateIps', envKey: 'EXTERNAL_API_ALLOW_PRIVATE_IPS' }
+    ];
+
+    const pills = [];
+
+    fieldMappings.forEach(({ selector, envKey }) => {
+        if (!overrideKeys.has(envKey)) {
+            return;
+        }
+
+        const fieldElement = document.querySelector(selector);
+        if (!fieldElement) {
+            return;
+        }
+
+        const container = fieldElement.closest('.space-y-2') || fieldElement.parentElement?.closest('.space-y-2');
+        if (!container) {
+            return;
+        }
+
+        const targetLabel = container.querySelector(`label[for="${fieldElement.id}"]`) || container.querySelector('label');
+        if (!targetLabel || targetLabel.querySelector('.override-pill')) {
+            return;
+        }
+
+        if (!targetLabel.classList.contains('flex')) {
+            targetLabel.classList.add('flex', 'items-center', 'gap-2', 'flex-wrap');
+        }
+
+        const pill = document.createElement('span');
+        pill.className = 'override-pill inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800 cursor-help';
+        pill.textContent = 'Overwritten';
+        const overrideDetails = parsedOverrideDetails[envKey] || {};
+        const injectedValue = overrideDetails.injected || '[unknown]';
+        const overrideValue = overrideDetails.override || '[unknown]';
+        pill.setAttribute('data-tooltip', [
+            '<div style="font-size:12px;">',
+            `<div style="font-weight:600;margin-bottom:4px;">${escapeHtml(envKey)}</div>`,
+            `<div><strong>.env:</strong> <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace;word-break:break-all;">${escapeHtml(injectedValue)}</span></div>`,
+            `<div><strong>Override:</strong> <span style="font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace;word-break:break-all;">${escapeHtml(overrideValue)}</span></div>`,
+            '</div>'
+        ].join(''));
+        targetLabel.appendChild(pill);
+        pills.push(pill);
+    });
+
+    if (pills.length > 0 && typeof tippy === 'function') {
+        const instances = tippy(pills, getReadableTooltipOptions({
+            maxWidth: 360,
+            content(reference) {
+                return createReadableTooltipContent(reference.getAttribute('data-tooltip') || 'Overwritten by local runtime settings.');
+            }
+        }));
+        registerTooltipInstances(instances);
+    }
+}
+
 
 // Custom Fields Management
 function initializeCustomFieldsManagement() {
@@ -1102,6 +1299,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeCoreSettings();
     initializeFormHandlers();
     initializeTooltipAndValidation();
+    initializeRuntimeOverridePills();
     initializePublicUrlStatus();
     initializeCustomFieldsManagement();
 });

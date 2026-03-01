@@ -9,11 +9,55 @@ const { validateApiUrl } = require('./serviceUtils');
 class SetupService {
   constructor() {
     this.envPath = path.join(process.cwd(), 'data', '.env');
+    this.runtimeOverridesPath = path.join(process.cwd(), 'data', 'runtime-overrides.json');
     this.configured = null; // Variable to store the configuration status
+  }
+
+  async loadRuntimeOverrides() {
+    try {
+      const content = await fs.readFile(this.runtimeOverridesPath, 'utf8');
+      const parsed = JSON.parse(content);
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.error('Error loading runtime overrides:', error.message);
+      }
+      return {};
+    }
+  }
+
+  async saveRuntimeOverrides(config) {
+    try {
+      const dataDir = path.dirname(this.runtimeOverridesPath);
+      await fs.mkdir(dataDir, { recursive: true });
+
+      const normalizedConfig = Object.fromEntries(
+        Object.entries(config || {}).map(([key, value]) => [key, value == null ? '' : String(value)])
+      );
+
+      await fs.writeFile(this.runtimeOverridesPath, JSON.stringify(normalizedConfig, null, 2));
+    } catch (error) {
+      console.error('Error saving runtime overrides:', error.message);
+      throw error;
+    }
+  }
+
+  async clearRuntimeOverrides() {
+    try {
+      await fs.unlink(this.runtimeOverridesPath);
+      return true;
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return false;
+      }
+      console.error('Error clearing runtime overrides:', error.message);
+      throw error;
+    }
   }
 
   async loadConfig() {
     try {
+      const runtimeOverrides = await this.loadRuntimeOverrides();
       const envContent = await fs.readFile(this.envPath, 'utf8');
       const config = {};
       envContent.split('\n').forEach(line => {
@@ -22,9 +66,20 @@ class SetupService {
           config[key.trim()] = value.trim();
         }
       });
-      return config;
+      return {
+        ...config,
+        ...runtimeOverrides
+      };
     } catch (error) {
-      console.error('Error loading config:', error.message);
+      if (error.code !== 'ENOENT') {
+        console.error('Error loading config:', error.message);
+      }
+
+      const runtimeOverrides = await this.loadRuntimeOverrides();
+      if (Object.keys(runtimeOverrides).length > 0) {
+        return runtimeOverrides;
+      }
+
       return null;
     }
   }
@@ -278,6 +333,7 @@ class SetupService {
         .join('\n');
 
       await fs.writeFile(this.envPath, envContent);
+      await this.saveRuntimeOverrides(config);
       
       // Reload environment variables
       Object.entries(config).forEach(([key, value]) => {
