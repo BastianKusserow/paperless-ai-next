@@ -28,6 +28,41 @@ class ThemeManager {
     }
 }
 
+class SettingsTabsManager {
+    constructor() {
+        this.buttons = Array.from(document.querySelectorAll('.settings-tab-button'));
+        this.contents = Array.from(document.querySelectorAll('.settings-tab-content'));
+        this.initialize();
+    }
+
+    initialize() {
+        if (this.buttons.length === 0 || this.contents.length === 0) {
+            return;
+        }
+
+        this.buttons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const tabId = button.dataset.tab;
+                this.activateTab(tabId);
+            });
+        });
+    }
+
+    activateTab(tabId) {
+        this.buttons.forEach((button) => {
+            const isActive = button.dataset.tab === tabId;
+            button.classList.toggle('active', isActive);
+            button.classList.toggle('border-blue-500', isActive);
+            button.classList.toggle('border-transparent', !isActive);
+        });
+
+        this.contents.forEach((content) => {
+            const isActive = content.id === tabId;
+            content.classList.toggle('hidden', !isActive);
+        });
+    }
+}
+
 class FormManager {
     constructor() {
         this.form = document.getElementById('setupForm');
@@ -48,17 +83,17 @@ class FormManager {
         this.toggleTagsInput();
         this.handleDisableAutomaticProcessing();
         
-        this.aiProvider.addEventListener('change', () => this.toggleProviderSettings());
-        this.tokenLimit.addEventListener('input', () => this.validateTokenLimit()); 
-        this.responseTokens.addEventListener('input', () => this.validateResponseTokens()); 
-        this.showTags.addEventListener('change', () => this.toggleTagsInput());
-        this.aiProcessedTag.addEventListener('change', () => this.toggleAiTagInput());
-        this.usePromptTags.addEventListener('change', () => this.togglePromptTagsInput());
-        this.disableAutomaticProcessing.addEventListener('change', () => this.handleDisableAutomaticProcessing());
+        if (this.aiProvider) this.aiProvider.addEventListener('change', () => this.toggleProviderSettings());
+        if (this.tokenLimit) this.tokenLimit.addEventListener('input', () => this.validateTokenLimit()); 
+        if (this.responseTokens) this.responseTokens.addEventListener('input', () => this.validateResponseTokens()); 
+        if (this.showTags) this.showTags.addEventListener('change', () => this.toggleTagsInput());
+        if (this.aiProcessedTag) this.aiProcessedTag.addEventListener('change', () => this.toggleAiTagInput());
+        if (this.usePromptTags) this.usePromptTags.addEventListener('change', () => this.togglePromptTagsInput());
+        if (this.disableAutomaticProcessing) this.disableAutomaticProcessing.addEventListener('change', () => this.handleDisableAutomaticProcessing());
         
         this.initializePasswordToggles();
 
-        if (this.usePromptTags.value === 'yes') {
+        if (this.usePromptTags && this.usePromptTags.value === 'yes') {
             this.disablePromptElements();
         }
         
@@ -85,6 +120,10 @@ class FormManager {
     }
 
     handleDisableAutomaticProcessing() {
+        if (!this.form || !this.disableAutomaticProcessing) {
+            return;
+        }
+
         // Create a hidden input if it doesn't exist
         let hiddenInput = document.getElementById('disableAutomaticProcessingValue');
         if (!hiddenInput) {
@@ -100,6 +139,10 @@ class FormManager {
     }
 
     toggleProviderSettings() {
+        if (!this.aiProvider) {
+            return;
+        }
+
         const provider = this.aiProvider.value;
         const openaiSettings = document.getElementById('openaiSettings');
         const ollamaSettings = document.getElementById('ollamaSettings');
@@ -133,6 +176,10 @@ class FormManager {
         const externalApiTransformationTemplate = document.getElementById('externalApiTransformationTemplate');
         
         
+        if (!openaiSettings || !ollamaSettings || !customSettings || !azureSettings) {
+            return;
+        }
+
         // Hide all settings sections first
         openaiSettings.classList.add('hidden');
         ollamaSettings.classList.add('hidden');
@@ -155,7 +202,6 @@ class FormManager {
         switch (provider) {
             case 'openai':
                 openaiSettings.classList.remove('hidden');
-                openaiKey.required = true;
                 break;
             case 'ollama':
                 ollamaSettings.classList.remove('hidden');
@@ -165,12 +211,10 @@ class FormManager {
             case 'custom':
                 customSettings.classList.remove('hidden');
                 customBaseUrl.required = true;
-                customApiKey.required = true;
                 customModel.required = true;
                 break;
             case 'azure':
                 azureSettings.classList.remove('hidden');
-                azureApiKey.required = true;
                 azureEndpoint.required = true;
                 azureDeploymentName.required = true;
                 azureApiVersion.required = true;
@@ -180,18 +224,27 @@ class FormManager {
 
     // Rest of the class methods remain the same
     toggleTagsInput() {
+        if (!this.showTags) {
+            return;
+        }
+
         const showTags = this.showTags.value;
         const tagsInputSection = document.getElementById('tagsInputSection');
+        const tagsInput = document.getElementById('tags');
         
         if (showTags === 'yes') {
             tagsInputSection.classList.remove('hidden');
         } else {
-            document.getElementById('tags').value = '';
+            if (tagsInput) tagsInput.value = '';
             tagsInputSection.classList.add('hidden');
         }
     }
 
     toggleAiTagInput() {
+        if (!this.aiProcessedTag) {
+            return;
+        }
+
         const showAiTag = this.aiProcessedTag.value;
         const aiTagNameSection = document.getElementById('aiTagNameSection');
         
@@ -203,6 +256,10 @@ class FormManager {
     }
 
     togglePromptTagsInput() {
+        if (!this.usePromptTags) {
+            return;
+        }
+
         const usePromptTags = this.usePromptTags.value;
         const promptTagsSection = document.getElementById('promptTagsSection');
         
@@ -216,6 +273,9 @@ class FormManager {
     }
 
     disablePromptElements() {
+        if (!this.systemPrompt || !this.systemPromptBtn) {
+            return;
+        }
         this.systemPrompt.disabled = true;
         this.systemPromptBtn.disabled = true;
         this.systemPrompt.classList.add('opacity-50', 'cursor-not-allowed');
@@ -223,6 +283,9 @@ class FormManager {
     }
 
     enablePromptElements() {
+        if (!this.systemPrompt || !this.systemPromptBtn) {
+            return;
+        }
         this.systemPrompt.disabled = false;
         this.systemPromptBtn.disabled = false;
         this.systemPrompt.classList.remove('opacity-50', 'cursor-not-allowed');
@@ -445,6 +508,7 @@ For the language:
 // Initialize everything when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     const themeManager = new ThemeManager();
+    const settingsTabsManager = new SettingsTabsManager();
     const formManager = new FormManager();
     const tagsManager = new TagsManager('tagInput','tagsContainer','tags');
     const ignoreTagsManager = new TagsManager('ignoreTagInput','ignoreTagsContainer','ignoreTags');
@@ -453,13 +517,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize textarea newlines
     const systemPromptTextarea = document.getElementById('systemPrompt');
-    systemPromptTextarea.value = systemPromptTextarea.value.replace(/\\n/g, '\n');
+    if (systemPromptTextarea) {
+        systemPromptTextarea.value = systemPromptTextarea.value.replace(/\\n/g, '\n');
+    }
 });
 
 // Form Submission Handler
 document.addEventListener('DOMContentLoaded', (event) => {
     const systemPromptTextarea = document.getElementById('systemPrompt');
-    systemPromptTextarea.value = systemPromptTextarea.value.replace(/\\n/g, '\n');
+    if (systemPromptTextarea) {
+        systemPromptTextarea.value = systemPromptTextarea.value.replace(/\\n/g, '\n');
+    }
 
     // Tag Cache TTL Help Tooltip
     const tagCacheTTLHelp = document.getElementById('tagCacheTTLHelp');
@@ -534,6 +602,9 @@ document.addEventListener('DOMContentLoaded', (event) => {
 
     // Form submission handler
     const setupForm = document.getElementById('setupForm');
+    if (!setupForm) {
+        return;
+    }
     setupForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         
@@ -989,46 +1060,4 @@ function removeCustomField(button) {
 }
 
 // Clear Tag Cache Button Handler (PERF-002)
-document.addEventListener('DOMContentLoaded', () => {
-    const clearTagCacheBtn = document.getElementById('clearTagCacheBtn');
-    if (clearTagCacheBtn) {
-        clearTagCacheBtn.addEventListener('click', async () => {
-            const btn = clearTagCacheBtn;
-            const originalHTML = btn.innerHTML;
-            
-            try {
-                btn.disabled = true;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Clearing Cache...';
-                
-                const response = await fetch('/api/settings/clear-tag-cache', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    await Swal.fire({
-                        icon: 'success',
-                        title: 'Cache Cleared!',
-                        text: result.message || 'Tag cache has been cleared successfully.',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
-                } else {
-                    throw new Error(result.error || 'Failed to clear cache');
-                }
-            } catch (error) {
-                console.error('Error clearing tag cache:', error);
-                await Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: error.message || 'Failed to clear tag cache. Please try again.'
-                });
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = originalHTML;
-            }
-        });
-    }
-});
+// duplicate clearTagCache handler removed (handled in main submit/event block above)
