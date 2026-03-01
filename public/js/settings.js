@@ -870,7 +870,7 @@ class SettingsHintManager {
                 touch: 'hold',
                 appendTo: () => document.body,
                 content(reference) {
-                    return `<div style="padding:8px 10px;line-height:1.4;color:#111827;">${reference.dataset.hintContent || ''}</div>`;
+                    return `<div style="background:#ffffff;color:#111827;border:1px solid #d1d5db;border-radius:8px;padding:8px 10px;line-height:1.45;">${reference.dataset.hintContent || ''}</div>`;
                 }
             });
         }
@@ -921,7 +921,7 @@ class SettingsHintManager {
             maxWidth: 420,
             touch: 'hold',
             content: `
-                <div style="padding:10px 12px;line-height:1.45;color:#111827;">
+                <div style="background:#ffffff;color:#111827;border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;line-height:1.45;">
                     <p style="margin-bottom:8px;">Controls how long tags are cached before refreshing from Paperless-ngx.</p>
                     <ul style="padding-left:18px; margin:0 0 8px 0;">
                         <li><strong>60-180s:</strong> fresher data, more API calls</li>
