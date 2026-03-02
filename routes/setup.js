@@ -2666,6 +2666,12 @@ router.get('/setup', async (req, res) => {
 router.get('/manual/preview/:id', async (req, res) => {
   try {
     const documentId = req.params.id;
+    
+    // Validate documentId to prevent path traversal and SSRF
+    if (!/^\d+$/.test(documentId)) {
+      return res.status(400).json({ error: 'Invalid document ID' });
+    }
+
     console.log('Fetching content for document:', documentId);
     
     const response = await fetch(
