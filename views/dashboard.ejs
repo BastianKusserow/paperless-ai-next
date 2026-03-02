@@ -326,7 +326,7 @@
                 </div>
         </main>
     </div>
-    <div id="dashboardDataPayload" class="hidden" data-version="<%= version %>"><%- JSON.stringify(paperless_data) %></div>
+    <div id="dashboardDataPayload" class="hidden" data-version="<%= version %>"><%= JSON.stringify(paperless_data) %></div>
     <%- include('partials/scripts/dashboard-scripts') %>
     <script src="js/dashboard.js"></script>
 </body>
