@@ -43,6 +43,7 @@
     "cheerio": "^1.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "csrf-csrf": "^4.0.3",
     "datatables.net": "^1.13.7",
     "datatables.net-dt": "^1.13.7",
     "date-fns": "^4.1.0",

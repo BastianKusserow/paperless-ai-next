@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>Paperless Assistant</title>
+  <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
   <link rel="icon" type="image/webp" href="/favicon.webp">
   <style>
     body { 

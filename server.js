@@ -16,6 +16,7 @@ process.env.RAG_SERVICE_URL = process.env.RAG_SERVICE_URL || 'http://localhost:8
 process.env.RAG_SERVICE_ENABLED = process.env.RAG_SERVICE_ENABLED || 'true';
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const { doubleCsrf } = require('csrf-csrf');
 const rateLimit = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const Logger = require('./services/loggerService');
@@ -127,6 +128,50 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(cookieParser());
+
+// CSRF Protection configuration
+const {
+  invalidCsrfTokenError,
+  generateToken,
+  doubleCsrfProtection,
+} = doubleCsrf({
+  getSecret: () => JWT_SECRET,
+  cookieName: "psai.x-csrf-token",
+  cookieOptions: {
+    sameSite: "lax",
+    path: "/",
+    secure: false, // Set to true if using HTTPS
+  },
+  size: 64,
+  ignoredMethods: ["GET", "HEAD", "OPTIONS"],
+  getTokenFromRequest: (req) => req.headers["x-csrf-token"] || req.body._csrf,
+});
+
+// Middleware to skip CSRF for API Key authenticated requests and provide token to EJS
+app.use((req, res, next) => {
+  const apiKey = req.headers['x-api-key'];
+  const currentApiKey = config.getApiKey();
+  
+  // If API Key is valid, skip CSRF
+  if (currentApiKey && apiKey && apiKey === currentApiKey) {
+    return next();
+  }
+
+  // Handle CSRF protection for other requests
+  doubleCsrfProtection(req, res, (err) => {
+    if (err) {
+      if (err === invalidCsrfTokenError) {
+        return res.status(403).json({ error: "Invalid CSRF token" });
+      }
+      return next(err);
+    }
+    
+    // Make CSRF token available to EJS templates
+    res.locals.csrfToken = generateToken(req, res);
+    next();
+  });
+});
+
 app.use(['/api', '/chat', '/manual'], apiGlobalLimiter);
 
 // Swagger documentation route (protected)

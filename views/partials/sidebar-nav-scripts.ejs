@@ -1,4 +1,39 @@
 <script>
+    // Global CSRF fetch interceptor
+    (function() {
+        const originalFetch = window.fetch;
+        window.fetch = async (...args) => {
+            let [resource, config] = args;
+            
+            // Default config if not provided
+            if (!config) config = {};
+            
+            const method = (config.method || 'GET').toUpperCase();
+            const ignoredMethods = ['GET', 'HEAD', 'OPTIONS'];
+            
+            // Only add CSRF token for state-changing methods
+            if (!ignoredMethods.includes(method)) {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                if (csrfToken) {
+                    if (!config.headers) config.headers = {};
+                    
+                    // Handle both Headers object and plain object
+                    if (config.headers instanceof Headers) {
+                        if (!config.headers.has('X-CSRF-Token')) {
+                            config.headers.append('X-CSRF-Token', csrfToken);
+                        }
+                    } else {
+                        if (!config.headers['X-CSRF-Token'] && !config.headers['x-csrf-token']) {
+                            config.headers['X-CSRF-Token'] = csrfToken;
+                        }
+                    }
+                }
+            }
+            
+            return originalFetch(resource, config);
+        };
+    })();
+
     document.addEventListener('DOMContentLoaded', function () {
         const currentPath = window.location.pathname;
         const navLinks = document.querySelectorAll('.sidebar-nav .sidebar-link[href]');

@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
     <title>Login - Paperless-AI next</title>
     <link rel="icon" type="image/webp" href="/favicon.webp">
     <script src="/vendor/tailwind/tailwindcss-3.4.16.js"></script>
@@ -25,6 +26,9 @@
             </div>
 
             <form class="space-y-6" action="/login" method="POST">
+                <% if (typeof csrfToken !== 'undefined') { %>
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <% } %>
                 <div>
                     <label for="username" class="block text-sm font-medium mb-2">Username</label>
                     <input id="username" 
