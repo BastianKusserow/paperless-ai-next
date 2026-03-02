@@ -220,6 +220,13 @@ class HistoryManager {
         }
     }
 
+    _escapeHTML(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
     initializeDataTable() {
         return $('#historyTable').DataTable({
             serverSide: true,
@@ -246,8 +253,9 @@ class HistoryManager {
                     data: 'title',
                     render: (data, type, row) => {
                         if (type === 'display') {
+                            const escapedData = this._escapeHTML(data);
                             return `
-                                <div class="font-medium">${data}</div>
+                                <div class="font-medium">${escapedData}</div>
                                 <div class="text-xs text-gray-500">Modified: ${new Date(row.created_at).toLocaleString()}</div>
                             `;
                         }
@@ -265,7 +273,10 @@ class HistoryManager {
                     orderable: false,
                     width: '80px'
                 },
-                { data: 'correspondent' },
+                { 
+                    data: 'correspondent',
+                    render: (data) => data ? `<span class="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 rounded-full text-xs">${this._escapeHTML(data)}</span>` : '<span class="text-gray-400 italic text-xs">None</span>'
+                },
                 {
                     data: null,
                     render: (data) => `
