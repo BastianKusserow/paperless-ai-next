@@ -39,6 +39,68 @@
     --image-invert: 1;
 }
 
+.shell-footer {
+    background-color: rgba(255, 255, 255, 0.7);
+    border-top-color: rgba(226, 232, 240, 0.4);
+}
+
+:root[data-theme="dark"] .shell-footer {
+    background-color: rgba(15, 23, 42, 0.7);
+    border-top-color: rgba(51, 65, 85, 0.6);
+}
+
+:root[data-theme="dark"] .shell-footer-text,
+:root[data-theme="dark"] .shell-footer-link {
+    color: var(--text-muted);
+}
+
+.shell-theme-toggle {
+    background-color: rgba(255, 255, 255, 0.7);
+    border-color: rgba(226, 232, 240, 0.6);
+    color: var(--text-secondary);
+}
+
+.shell-theme-toggle:hover {
+    background-color: var(--hover-bg);
+}
+
+:root[data-theme="dark"] .shell-theme-toggle {
+    background-color: rgba(30, 41, 59, 0.7);
+    border-color: rgba(71, 85, 105, 0.7);
+    color: var(--text-primary);
+}
+
+.github-support-text {
+    color: var(--text-muted);
+}
+
+.restart-overlay-card {
+    background-color: rgba(255, 255, 255, 0.92);
+}
+
+:root[data-theme="dark"] .restart-overlay-card {
+    background-color: rgba(15, 23, 42, 0.9);
+    border-color: rgba(71, 85, 105, 0.6);
+    color: var(--text-primary);
+}
+
+:root[data-theme="dark"] .restart-overlay-status,
+:root[data-theme="dark"] .restart-overlay-percent {
+    color: var(--text-muted);
+}
+
+:root[data-theme="dark"] .restart-overlay-progress-track {
+    background-color: #334155;
+}
+
+:root[data-theme="dark"] .restart-overlay-retry {
+    border-color: #475569;
+}
+
+:root[data-theme="dark"] .restart-overlay-retry:hover {
+    background-color: #1e293b;
+}
+
 /* Add image inversion for dark mode */
 [data-theme="dark"] img:not(.no-invert) {
     filter: invert(var(--image-invert));

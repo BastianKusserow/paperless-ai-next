@@ -119,6 +119,17 @@
     color: var(--text-muted);
 }
 
+.rag-page .source-doc-link {
+    margin-left: auto;
+    color: var(--accent-primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.rag-page .source-doc-link:hover {
+    text-decoration: underline;
+}
+
 .rag-page .rag-model-meta {
     font-size: 0.75rem;
     margin-top: 0.5rem;

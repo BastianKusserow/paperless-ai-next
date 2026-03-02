@@ -165,6 +165,9 @@
         </main>
     </div>
 
+    <script>
+        window.paperlessPublicUrl = <%- JSON.stringify(typeof paperlessUrl !== 'undefined' ? paperlessUrl : '') %>;
+    </script>
     <%- include('partials/scripts/rag-scripts') %>
     <%- include('partials/shell/footer') %>
     <%- include('partials/shell/body-close') %>

@@ -51,6 +51,7 @@
     let isConnected = false;
     let isReady = false;
     let initializeRequested = false;
+    const paperlessPublicUrl = (typeof window.paperlessPublicUrl === 'string' ? window.paperlessPublicUrl : '').replace(/\/$/, '');
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
@@ -535,6 +536,34 @@
         scrollToBottom();
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function getPaperlessDocumentUrl(source) {
+        if (!source || typeof source !== 'object') {
+            return '';
+        }
+
+        if (typeof source.document_url === 'string' && source.document_url.trim()) {
+            return source.document_url.trim();
+        }
+
+        const rawDocumentId = source.doc_id ?? source.document_id ?? source.id;
+        const documentId = Number.parseInt(rawDocumentId, 10);
+
+        if (!Number.isInteger(documentId) || documentId <= 0 || !paperlessPublicUrl) {
+            return '';
+        }
+
+        return `${paperlessPublicUrl}/documents/${documentId}/details`;
+    }
+
     function addAssistantMessage(message, sources = [], modelUsed = null) {
         const messageElement = document.createElement('div');
         messageElement.className = 'message assistant';
@@ -564,14 +593,23 @@
             sources.forEach((source, index) => {
                 const date = source.date ? new Date(source.date).toLocaleDateString('en-US') : 'Unknown';
                 const hidden = index > 0 ? ' hidden' : '';
+                const sourceUrl = getPaperlessDocumentUrl(source);
+                const safeTitle = escapeHtml(source.title || 'Unknown Title');
+                const safeSnippet = escapeHtml(source.snippet || 'No excerpt available');
+                const safeCorrespondent = escapeHtml(source.correspondent || 'Unknown Sender');
+                const safeDate = escapeHtml(date);
+                const sourceLinkHtml = sourceUrl
+                    ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="source-doc-link">Open document</a>`
+                    : '';
 
                 html += `
                     <div class="source${hidden}" data-index="${index}">
-                        <div class="source-title">${source.title || 'Unknown Title'}</div>
-                        <p>${source.snippet || 'No excerpt available'}</p>
+                        <div class="source-title">${safeTitle}</div>
+                        <p>${safeSnippet}</p>
                         <div class="source-meta">
-                            <span>${source.correspondent || 'Unknown Sender'}</span>
-                            <span>${date}</span>
+                            <span>${safeCorrespondent}</span>
+                            <span>${safeDate}</span>
+                            ${sourceLinkHtml}
                         </div>
                     </div>
                 `;

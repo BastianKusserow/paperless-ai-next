@@ -65,6 +65,10 @@ const retryTracker = new Map();
 // Configurable minimum content length (default: 10 characters)
 const MIN_CONTENT_LENGTH = parseInt(process.env.MIN_CONTENT_LENGTH || '10', 10);
 
+function isChatEnabled() {
+  return process.env.RAG_SERVICE_ENABLED === 'true';
+}
+
 
 const corsOptions = {
   origin: true,
@@ -638,9 +642,19 @@ if (process.env.RAG_SERVICE_ENABLED === 'true') {
   // RAG UI route
   app.get('/rag', isAuthenticated, async (req, res) => {
     try {
+      let paperlessUrl = '';
+      try {
+        paperlessUrl = await paperlessService.getPublicBaseUrl();
+      } catch (error) {
+        console.warn('[WARN] Unable to resolve Paperless public URL for RAG links:', error.message);
+      }
+
       res.render('rag', { 
         title: 'Ask your documents - RAG Interface',
-        version: config.PAPERLESS_AI_VERSION || ' '
+        version: config.PAPERLESS_AI_VERSION || ' ',
+        paperlessUrl,
+        ragEnabled: true,
+        chatEnabled: isChatEnabled()
       });
     } catch (error) {
       console.error('Error rendering RAG UI:', error);

@@ -105,6 +105,7 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
 
 # Set production environment
 ENV NODE_ENV=production \
+    ANONYMIZED_TELEMETRY=False \
     PAPERLESS_AI_COMMIT_SHA=${PAPERLESS_AI_COMMIT_SHA}
 
 LABEL org.opencontainers.image.revision=${PAPERLESS_AI_COMMIT_SHA}
