@@ -124,6 +124,7 @@ module.exports = {
     return getTrustProxy();
   },
   disableAutomaticProcessing: process.env.DISABLE_AUTOMATIC_PROCESSING || 'no',
+  exposeApiDocs: parseEnvBoolean(process.env.EXPOSE_API_DOCS, 'no'),
   globalRateLimitWindowMs: parseInt(process.env.GLOBAL_RATE_LIMIT_WINDOW_MS || '900000', 10),
   globalRateLimitMax: parseInt(process.env.GLOBAL_RATE_LIMIT_MAX || '1000', 10),
   predefinedMode: process.env.PROCESS_PREDEFINED_DOCUMENTS,

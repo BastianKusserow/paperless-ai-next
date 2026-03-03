@@ -14,6 +14,7 @@ COPY --chown=node:node routes ./routes/
 COPY --chown=node:node services ./services/
 COPY --chown=node:node views ./views/
 COPY --chown=node:node public ./public/
+COPY --chown=node:node OPENAPI ./OPENAPI/
 COPY --chown=node:node schemas.js swagger.js ecosystem.config.js package.json ./
 
 # Make startup script executable
