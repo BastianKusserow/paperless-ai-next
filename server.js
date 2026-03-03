@@ -18,12 +18,11 @@ const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const { doubleCsrf } = require('csrf-csrf');
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 const jwt = require('jsonwebtoken');
 const Logger = require('./services/loggerService');
 const { max } = require('date-fns');
 const { validateCustomFieldValue, shouldQueueForOcrOnAiError, classifyOcrQueueReasonFromAiError } = require('./services/serviceUtils');
-const swaggerUi = require('swagger-ui-express');
-const swaggerSpec = require('./swagger');
 const dataDir = path.join(process.cwd(), 'data');
 const openApiDir = path.join(dataDir, 'OPENAPI');
 const openApiPath = path.join(openApiDir, 'openapi.json');
@@ -110,7 +109,7 @@ const apiGlobalLimiter = rateLimit({
       }
     }
 
-    return req.ip;
+    return ipKeyGenerator(req.ip);
   }
 });
 
@@ -185,73 +184,97 @@ app.use((req, res, next) => {
 
 app.use(['/api', '/chat', '/manual'], apiGlobalLimiter);
 
-// Swagger documentation route (protected)
-app.use('/api-docs', isAuthenticated, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  swaggerOptions: {
-    url: '/api-docs/openapi.json'
-  }
-}));
+const isApiDocsEnabled = config.exposeApiDocs === 'yes';
+let swaggerSpec = null;
 
-/**
- * @swagger
- * /api-docs/openapi.json:
- *   get:
- *     summary: Retrieve the OpenAPI specification
- *     description: |
- *       Returns the complete OpenAPI specification for the Paperless-AI next API.
- *       This endpoint attempts to serve a static OpenAPI JSON file first, falling back
- *       to dynamically generating the specification if the file cannot be read.
- *       
- *       The OpenAPI specification document contains all API endpoints, parameters,
- *       request bodies, responses, and schemas for the entire application.
- *     tags: [API, System]
- *     responses:
- *       200:
- *         description: OpenAPI specification returned successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               description: The complete OpenAPI specification
- *       302:
- *         description: Redirect to login when authentication is missing or invalid
- *         headers:
- *           Location:
- *             schema:
- *               type: string
- *               example: /login
- *       404:
- *         description: OpenAPI specification file not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- *       500:
- *         description: Server error occurred while retrieving the OpenAPI specification
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
- */
-app.get('/api-docs/openapi.json', isAuthenticated, (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  
-  // Try to serve the static file first
-  fs.readFile(openApiPath)
-    .then(data => {
-      res.send(JSON.parse(data));
-    })
-    .catch(err => {
-      console.warn('Error reading OpenAPI file, generating dynamically:', err.message);
-      // Fallback to generating the spec if file can't be read
-      res.send(swaggerSpec);
-    });
-});
+if (isApiDocsEnabled) {
+  const swaggerUi = require('swagger-ui-express');
+  swaggerSpec = require('./swagger');
 
-// Add a redirect for the old endpoint for backward compatibility
-app.get('/api-docs.json', isAuthenticated, (req, res) => {
-  res.redirect('/api-docs/openapi.json');
-});
+  // Swagger documentation route (protected)
+  app.use('/api-docs', isAuthenticated, swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    swaggerOptions: {
+      url: '/api-docs/openapi.json'
+    }
+  }));
+
+  /**
+   * @swagger
+   * /api-docs/openapi.json:
+   *   get:
+   *     summary: Retrieve the OpenAPI specification
+   *     description: |
+   *       Returns the complete OpenAPI specification for the Paperless-AI next API.
+   *       This endpoint attempts to serve a static OpenAPI JSON file first, falling back
+   *       to dynamically generating the specification if the file cannot be read.
+   *       
+   *       The OpenAPI specification document contains all API endpoints, parameters,
+   *       request bodies, responses, and schemas for the entire application.
+   *     tags: [API, System]
+   *     responses:
+   *       200:
+   *         description: OpenAPI specification returned successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               description: The complete OpenAPI specification
+   *       302:
+   *         description: Redirect to login when authentication is missing or invalid
+   *         headers:
+   *           Location:
+   *             schema:
+   *               type: string
+   *               example: /login
+   *       404:
+   *         description: OpenAPI specification file not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Error'
+   *       500:
+   *         description: Server error occurred while retrieving the OpenAPI specification
+   *         content:
+   *           application/json:
+   *             schema:
+   *               $ref: '#/components/schemas/Error'
+   */
+  app.get('/api-docs/openapi.json', isAuthenticated, (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    
+    // Try to serve the static file first
+    fs.readFile(openApiPath)
+      .then(data => {
+        res.send(JSON.parse(data));
+      })
+      .catch(err => {
+        console.warn('Error reading OpenAPI file, generating dynamically:', err.message);
+        // Fallback to generating the spec if file can't be read
+        res.send(swaggerSpec);
+      });
+  });
+
+  /**
+   * @swagger
+   * /api-docs.json:
+   *   get:
+   *     summary: Redirect to OpenAPI specification endpoint
+   *     description: Backward-compatible redirect to `/api-docs/openapi.json`.
+   *     tags:
+   *       - API
+   *       - System
+   *     security:
+   *       - BearerAuth: []
+   *       - ApiKeyAuth: []
+   *     responses:
+   *       302:
+   *         description: Redirects to `/api-docs/openapi.json`
+   */
+  // Add a redirect for the old endpoint for backward compatibility
+  app.get('/api-docs.json', isAuthenticated, (req, res) => {
+    res.redirect('/api-docs/openapi.json');
+  });
+}
 
 // View engine setup
 app.set('view engine', 'ejs');
@@ -282,6 +305,10 @@ async function initializeDataDirectory() {
 
 // Save OpenAPI specification to file
 async function saveOpenApiSpec() {
+  if (!isApiDocsEnabled || !swaggerSpec) {
+    return true;
+  }
+
   try {
     // Ensure the directory exists
     try {
@@ -638,6 +665,29 @@ const ragRoutes = require('./routes/rag');
 // Mount RAG routes if enabled
 if (process.env.RAG_SERVICE_ENABLED === 'true') {
   app.use('/api/rag', isAuthenticated, ragRoutes);
+
+  /**
+   * @swagger
+   * /rag:
+   *   get:
+   *     summary: RAG chat interface page
+   *     description: Renders the RAG interface for asking questions against indexed documents.
+   *     tags:
+   *       - Navigation
+   *       - RAG
+   *     security:
+   *       - BearerAuth: []
+   *       - ApiKeyAuth: []
+   *     responses:
+   *       200:
+   *         description: RAG page rendered successfully
+   *         content:
+   *           text/html:
+   *             schema:
+   *               type: string
+   *       500:
+   *         description: Server error
+   */
   
   // RAG UI route
   app.get('/rag', isAuthenticated, async (req, res) => {

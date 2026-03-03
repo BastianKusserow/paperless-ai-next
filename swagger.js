@@ -1,4 +1,8 @@
+const fs = require('fs');
+const path = require('path');
 const swaggerJSDoc = require('swagger-jsdoc');
+
+const bundledOpenApiPath = path.join(__dirname, 'OPENAPI', 'openapi.json');
 
 const swaggerDefinition = {
   openapi: '3.0.0',
@@ -49,6 +53,22 @@ const options = {
   apis: ['./server.js', './routes/*.js', './schemas.js'], // Path to the API docs
 };
 
-const swaggerSpec = swaggerJSDoc(options);
+function loadBundledOpenApiSpec() {
+  try {
+    const fileContent = fs.readFileSync(bundledOpenApiPath, 'utf8');
+    return JSON.parse(fileContent);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.warn(`Could not load bundled OpenAPI spec from ${bundledOpenApiPath}: ${error.message}`);
+    }
+    return null;
+  }
+}
+
+function generateOpenApiSpec() {
+  return swaggerJSDoc(options);
+}
+
+const swaggerSpec = loadBundledOpenApiSpec() || generateOpenApiSpec();
 
 module.exports = swaggerSpec;

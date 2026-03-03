@@ -630,6 +630,44 @@ router.get('/api/playground/bootstrap', protectApiRoute, async (req, res) => {
 
 /**
  * @swagger
+ * /api/playground/bootstrap:
+ *   get:
+ *     summary: Get playground bootstrap data
+ *     description: Returns documents and metadata required to initialize the AI playground UI.
+ *     tags:
+ *       - Documents
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Playground bootstrap data loaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 documents:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 tagNames:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                 correspondentNames:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *       500:
+ *         description: Server error
+ */
+
+/**
+ * @swagger
  * /thumb/{documentId}:
  *   get:
  *     summary: Get document thumbnail
@@ -1559,9 +1597,36 @@ router.post('/api/history/clear-cache', isAuthenticated, cacheClearLimiter, asyn
 });
 
 /**
- * GET /api/history/:id/detail
- * Returns full AI analysis details for a single document from history,
- * including a live tag diff against the current state in Paperless-ngx.
+ * @swagger
+ * /api/history/{id}/detail:
+ *   get:
+ *     summary: Get detailed history entry data
+ *     description: Returns full stored AI output details and a live diff view against current Paperless metadata.
+ *     tags:
+ *       - History
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Detailed history data returned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         description: Invalid document ID
+ *       404:
+ *         description: No history entry found
+ *       500:
+ *         description: Server error
  */
 router.get('/api/history/:id/detail', isAuthenticated, async (req, res) => {
   try {
@@ -1664,9 +1729,41 @@ router.get('/api/history/:id/detail', isAuthenticated, async (req, res) => {
 });
 
 /**
- * POST /api/history/:id/restore
- * Restores a document in Paperless-ngx to its original (pre-AI) state
- * using the saved original_documents data.
+ * @swagger
+ * /api/history/{id}/restore:
+ *   post:
+ *     summary: Restore document to pre-AI state
+ *     description: Restores title, tags, correspondent and related metadata from saved original values.
+ *     tags:
+ *       - History
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Document restored successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid document ID
+ *       404:
+ *         description: Original data not found
+ *       500:
+ *         description: Server error
  */
 router.post('/api/history/:id/restore', isAuthenticated, async (req, res) => {
   try {
@@ -1708,10 +1805,39 @@ router.post('/api/history/:id/restore', isAuthenticated, async (req, res) => {
 });
 
 /**
- * POST /api/history/:id/rescan
- * Removes a document from all tracking tables so it will be picked up
- * on the next scan. Returns immediately; the actual rescan is triggered
- * separately via POST /api/scan/now.
+ * @swagger
+ * /api/history/{id}/rescan:
+ *   post:
+ *     summary: Reset one document for reprocessing
+ *     description: Removes all tracking records for a document so it is processed again in a subsequent scan.
+ *     tags:
+ *       - History
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Document reset for rescanning
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       400:
+ *         description: Invalid document ID
+ *       500:
+ *         description: Server error
  */
 router.post('/api/history/:id/rescan', isAuthenticated, async (req, res) => {
   try {
@@ -1779,6 +1905,35 @@ router.post('/api/settings/clear-tag-cache', isAuthenticated, cacheClearLimiter,
   }
 });
 
+/**
+ * @swagger
+ * /api/settings/reset-local-overrides:
+ *   post:
+ *     summary: Reset local runtime overrides
+ *     description: Removes local runtime override values so injected environment variables are used after restart.
+ *     tags:
+ *       - Settings
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Override reset completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 hadOverrides:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
+
 router.post('/api/settings/reset-local-overrides', isAuthenticated, cacheClearLimiter, async (req, res) => {
   try {
     const hadOverrides = await setupService.clearRuntimeOverrides();
@@ -1798,6 +1953,34 @@ router.post('/api/settings/reset-local-overrides', isAuthenticated, cacheClearLi
     });
   }
 });
+
+/**
+ * @swagger
+ * /api/settings/rag-force-model-redownload:
+ *   post:
+ *     summary: Force RAG model re-download
+ *     description: Triggers re-download of RAG models in the background.
+ *     tags:
+ *       - Settings
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Re-download trigger accepted
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
 
 router.post('/api/settings/rag-force-model-redownload', isAuthenticated, cacheClearLimiter, async (req, res) => {
   try {
@@ -3319,6 +3502,29 @@ router.get('/api/dashboard/stats', async (req, res) => {
 
 /**
  * @swagger
+ * /api/dashboard/stats:
+ *   get:
+ *     summary: Get dashboard statistics payload
+ *     description: Returns all aggregate counters and chart datasets required by the dashboard UI.
+ *     tags:
+ *       - System
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard statistics returned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       500:
+ *         description: Server error
+ */
+
+/**
+ * @swagger
  * /settings:
  *   get:
  *     summary: Application settings page
@@ -3527,6 +3733,36 @@ router.get('/api/settings/paperless-public-url', isAuthenticated, async (req, re
     return res.status(500).json({ success: false, error: 'Failed to detect Paperless public URL' });
   }
 });
+
+/**
+ * @swagger
+ * /api/settings/paperless-public-url:
+ *   get:
+ *     summary: Detect Paperless public URL
+ *     description: Detects and returns the public base URL used for document links.
+ *     tags:
+ *       - Settings
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Public URL resolved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 publicUrl:
+ *                   type: string
+ *                 source:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
 
 /**
  * @swagger
@@ -5249,6 +5485,25 @@ router.get('/api/rag-test', async (req, res) => {
 }
 );
 
+/**
+ * @swagger
+ * /api/rag-test:
+ *   get:
+ *     summary: Trigger RAG diagnostic run
+ *     description: Initializes RAG and attempts to send documents to the RAG service.
+ *     tags:
+ *       - RAG
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: RAG diagnostic completed successfully
+ *       500:
+ *         description: RAG diagnostic failed
+ */
+
 router.get('/dashboard/doc/:id', async (req, res) => {
   const docId = req.params.id;
   if (!docId) {
@@ -5269,6 +5524,32 @@ router.get('/dashboard/doc/:id', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /dashboard/doc/{id}:
+ *   get:
+ *     summary: Redirect to Paperless document details
+ *     tags:
+ *       - Navigation
+ *       - Documents
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       302:
+ *         description: Redirect to Paperless document page
+ *       400:
+ *         description: Missing document ID
+ *       500:
+ *         description: Server error
+ */
+
 // ─── OCR Queue Routes ─────────────────────────────────────────────────────
 
 // Page: OCR Queue UI
@@ -5286,6 +5567,28 @@ router.get('/ocr', protectApiRoute, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /ocr:
+ *   get:
+ *     summary: OCR queue page
+ *     tags:
+ *       - Navigation
+ *       - OCR
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: OCR page rendered successfully
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ *       500:
+ *         description: Server error
+ */
+
 // Page: Permanently Failed UI
 router.get('/failed', protectApiRoute, async (req, res) => {
   try {
@@ -5299,6 +5602,28 @@ router.get('/failed', protectApiRoute, async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /failed:
+ *   get:
+ *     summary: Permanently failed queue page
+ *     tags:
+ *       - Navigation
+ *       - OCR
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Failed queue page rendered successfully
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ *       500:
+ *         description: Server error
+ */
 
 // Page: About / Support Information
 router.get('/about', protectApiRoute, async (req, res) => {
@@ -5362,6 +5687,28 @@ router.get('/about', protectApiRoute, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /about:
+ *   get:
+ *     summary: About and support information page
+ *     tags:
+ *       - Navigation
+ *       - System
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: About page rendered successfully
+ *         content:
+ *           text/html:
+ *             schema:
+ *               type: string
+ *       500:
+ *         description: Server error
+ */
+
 // API: Get paginated queue
 router.get('/api/ocr/queue', isAuthenticated, async (req, res) => {
   try {
@@ -5391,6 +5738,24 @@ router.get('/api/ocr/queue', isAuthenticated, async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/ocr/queue:
+ *   get:
+ *     summary: Get paginated OCR queue
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: OCR queue returned successfully
+ *       500:
+ *         description: Server error
+ */
 
 // API: Add a document manually to OCR queue
 router.post('/api/ocr/queue/add', isAuthenticated, async (req, res) => {
@@ -5422,6 +5787,37 @@ router.post('/api/ocr/queue/add', isAuthenticated, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/ocr/queue/add:
+ *   post:
+ *     summary: Add document to OCR queue
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - documentId
+ *             properties:
+ *               documentId:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: Add operation result
+ *       400:
+ *         description: Invalid payload
+ *       500:
+ *         description: Server error
+ */
+
 // API: Remove a document from OCR queue
 router.delete('/api/ocr/queue/:documentId', isAuthenticated, async (req, res) => {
   try {
@@ -5436,6 +5832,32 @@ router.delete('/api/ocr/queue/:documentId', isAuthenticated, async (req, res) =>
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/ocr/queue/{documentId}:
+ *   delete:
+ *     summary: Remove document from OCR queue
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Remove operation result
+ *       400:
+ *         description: Invalid document ID
+ *       500:
+ *         description: Server error
+ */
 
 // API: Process a single document with Mistral OCR (SSE)
 router.post('/api/ocr/process/:documentId', isAuthenticated, async (req, res) => {
@@ -5478,6 +5900,35 @@ router.post('/api/ocr/process/:documentId', isAuthenticated, async (req, res) =>
 
   res.end();
 });
+
+/**
+ * @swagger
+ * /api/ocr/process/{documentId}:
+ *   post:
+ *     summary: Process one OCR queue item
+ *     description: Starts OCR processing for one document and streams progress via SSE.
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: SSE stream started
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *       400:
+ *         description: Invalid document ID
+ */
 
 // API: Process all pending items in OCR queue (SSE)
 router.post('/api/ocr/process-all', isAuthenticated, async (req, res) => {
@@ -5541,6 +5992,27 @@ router.post('/api/ocr/process-all', isAuthenticated, async (req, res) => {
   res.end();
 });
 
+/**
+ * @swagger
+ * /api/ocr/process-all:
+ *   post:
+ *     summary: Process all pending OCR queue items
+ *     description: Starts batch OCR processing and streams progress via SSE.
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: SSE stream started
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ */
+
 // API: Trigger AI-only analysis from existing OCR text (SSE)
 router.post('/api/ocr/analyze/:documentId', isAuthenticated, async (req, res) => {
   const documentId = parseInt(req.params.documentId, 10);
@@ -5581,6 +6053,35 @@ router.post('/api/ocr/analyze/:documentId', isAuthenticated, async (req, res) =>
   res.end();
 });
 
+/**
+ * @swagger
+ * /api/ocr/analyze/{documentId}:
+ *   post:
+ *     summary: Analyze existing OCR text with AI
+ *     description: Uses existing OCR text and streams analysis progress via SSE.
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: SSE stream started
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *       400:
+ *         description: Invalid document ID
+ */
+
 // API: Get OCR text for a queue item
 router.get('/api/ocr/queue/:documentId/text', isAuthenticated, async (req, res) => {
   try {
@@ -5609,6 +6110,34 @@ router.get('/api/ocr/queue/:documentId/text', isAuthenticated, async (req, res) 
   }
 });
 
+/**
+ * @swagger
+ * /api/ocr/queue/{documentId}/text:
+ *   get:
+ *     summary: Get OCR text for one queue item
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: OCR text payload returned
+ *       400:
+ *         description: Invalid document ID
+ *       404:
+ *         description: Queue item not found
+ *       500:
+ *         description: Server error
+ */
+
 // API: Get OCR queue statistics
 router.get('/api/ocr/stats', isAuthenticated, async (req, res) => {
   try {
@@ -5628,6 +6157,24 @@ router.get('/api/ocr/stats', isAuthenticated, async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/ocr/stats:
+ *   get:
+ *     summary: Get OCR queue statistics
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: OCR statistics returned successfully
+ *       500:
+ *         description: Server error
+ */
 
 // API: Get paginated permanently failed documents queue
 router.get('/api/failed/queue', isAuthenticated, async (req, res) => {
@@ -5657,6 +6204,24 @@ router.get('/api/failed/queue', isAuthenticated, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/failed/queue:
+ *   get:
+ *     summary: Get permanently failed document queue
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Failed queue returned successfully
+ *       500:
+ *         description: Server error
+ */
+
 // API: Reset terminal failure state for a document
 router.post('/api/failed/reset/:documentId', isAuthenticated, async (req, res) => {
   try {
@@ -5679,5 +6244,31 @@ router.post('/api/failed/reset/:documentId', isAuthenticated, async (req, res) =
     return res.status(500).json({ success: false, error: error.message });
   }
 });
+
+/**
+ * @swagger
+ * /api/failed/reset/{documentId}:
+ *   post:
+ *     summary: Reset permanently failed document
+ *     tags:
+ *       - OCR
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: documentId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Reset operation result
+ *       400:
+ *         description: Invalid document ID
+ *       500:
+ *         description: Server error
+ */
 
 module.exports = router;

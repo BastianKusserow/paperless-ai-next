@@ -4,7 +4,47 @@ const router = express.Router();
 const ragService = require('../services/ragService');
 
 /**
- * Search documents
+ * @swagger
+ * /api/rag/search:
+ *   post:
+ *     summary: Search indexed documents
+ *     description: Performs a hybrid RAG search across indexed documents using the provided query and optional filters.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - query
+ *             properties:
+ *               query:
+ *                 type: string
+ *                 example: "invoice march 2026"
+ *               from_date:
+ *                 type: string
+ *                 format: date
+ *               to_date:
+ *                 type: string
+ *                 format: date
+ *               correspondent:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Search results returned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         description: Missing required query
+ *       500:
+ *         description: Internal server error
  */
 router.post('/search', async (req, res) => {
   try {
@@ -28,7 +68,39 @@ router.post('/search', async (req, res) => {
 });
 
 /**
- * Ask a question about documents
+ * @swagger
+ * /api/rag/ask:
+ *   post:
+ *     summary: Ask a question against indexed documents
+ *     description: Returns an AI-generated answer grounded in indexed document content.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - question
+ *             properties:
+ *               question:
+ *                 type: string
+ *                 example: "Which invoices are overdue?"
+ *     responses:
+ *       200:
+ *         description: Answer generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       400:
+ *         description: Missing required question
+ *       500:
+ *         description: Internal server error
  */
 router.post('/ask', async (req, res) => {
   try {
@@ -47,7 +119,35 @@ router.post('/ask', async (req, res) => {
 });
 
 /**
- * Start document indexing
+ * @swagger
+ * /api/rag/index:
+ *   post:
+ *     summary: Start document indexing
+ *     description: Starts or re-runs indexing in the RAG backend.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               force:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       200:
+ *         description: Indexing triggered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       500:
+ *         description: Internal server error
  */
 router.post('/index', async (req, res) => {
   try {
@@ -61,7 +161,25 @@ router.post('/index', async (req, res) => {
 });
 
 /**
- * Get indexing status
+ * @swagger
+ * /api/rag/index/status:
+ *   get:
+ *     summary: Get indexing status
+ *     description: Returns current status information for RAG indexing.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Indexing status returned
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       500:
+ *         description: Internal server error
  */
 router.get('/index/status', async (req, res) => {
   try {
@@ -74,7 +192,25 @@ router.get('/index/status', async (req, res) => {
 });
 
 /**
- * Check if updates are needed
+ * @swagger
+ * /api/rag/index/check:
+ *   get:
+ *     summary: Check whether re-indexing is required
+ *     description: Compares source state and returns whether RAG index updates are needed.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Check completed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       500:
+ *         description: Internal server error
  */
 router.get('/index/check', async (req, res) => {
   try {
@@ -87,7 +223,25 @@ router.get('/index/check', async (req, res) => {
 });
 
 /**
- * Get RAG service status
+ * @swagger
+ * /api/rag/status:
+ *   get:
+ *     summary: Get RAG backend status
+ *     description: Returns status details for RAG service and AI backend connectivity.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Status returned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       500:
+ *         description: Internal server error
  */
 router.get('/status', async (req, res) => {
   try {
@@ -111,7 +265,35 @@ router.get('/status', async (req, res) => {
 });
 
 /**
- * Initialize RAG service
+ * @swagger
+ * /api/rag/initialize:
+ *   post:
+ *     summary: Initialize RAG service
+ *     description: Initializes RAG components and optionally forces a full refresh.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               force:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       200:
+ *         description: Initialization completed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       500:
+ *         description: Internal server error
  */
 router.post('/initialize', async (req, res) => {
   try {

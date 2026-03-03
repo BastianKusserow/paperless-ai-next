@@ -509,6 +509,17 @@
               }
             }
           },
+          "302": {
+            "description": "Redirect to login when authentication is missing or invalid",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string",
+                  "example": "/login"
+                }
+              }
+            }
+          },
           "404": {
             "description": "OpenAPI specification file not found",
             "content": {
@@ -528,6 +539,62 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api-docs.json": {
+      "get": {
+        "summary": "Redirect to OpenAPI specification endpoint",
+        "description": "Backward-compatible redirect to `/api-docs/openapi.json`.",
+        "tags": [
+          "API",
+          "System"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirects to `/api-docs/openapi.json`"
+          }
+        }
+      }
+    },
+    "/rag": {
+      "get": {
+        "summary": "RAG chat interface page",
+        "description": "Renders the RAG interface for asking questions against indexed documents.",
+        "tags": [
+          "Navigation",
+          "RAG"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RAG page rendered successfully",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
           }
         }
       }
@@ -637,6 +704,317 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/rag/search": {
+      "post": {
+        "summary": "Search indexed documents",
+        "description": "Performs a hybrid RAG search across indexed documents using the provided query and optional filters.",
+        "tags": [
+          "RAG"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "query"
+                ],
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "example": "invoice march 2026"
+                  },
+                  "from_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "to_date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "correspondent": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required query"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/rag/ask": {
+      "post": {
+        "summary": "Ask a question against indexed documents",
+        "description": "Returns an AI-generated answer grounded in indexed document content.",
+        "tags": [
+          "RAG"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "question"
+                ],
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "example": "Which invoices are overdue?"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Answer generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing required question"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/rag/index": {
+      "post": {
+        "summary": "Start document indexing",
+        "description": "Starts or re-runs indexing in the RAG backend.",
+        "tags": [
+          "RAG"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "force": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Indexing triggered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/rag/index/status": {
+      "get": {
+        "summary": "Get indexing status",
+        "description": "Returns current status information for RAG indexing.",
+        "tags": [
+          "RAG"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Indexing status returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/rag/index/check": {
+      "get": {
+        "summary": "Check whether re-indexing is required",
+        "description": "Compares source state and returns whether RAG index updates are needed.",
+        "tags": [
+          "RAG"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Check completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/rag/status": {
+      "get": {
+        "summary": "Get RAG backend status",
+        "description": "Returns status details for RAG service and AI backend connectivity.",
+        "tags": [
+          "RAG"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/rag/initialize": {
+      "post": {
+        "summary": "Initialize RAG service",
+        "description": "Initializes RAG components and optionally forces a full refresh.",
+        "tags": [
+          "RAG"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "force": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Initialization completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
           }
         }
       }
@@ -968,6 +1346,62 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/playground/bootstrap": {
+      "get": {
+        "summary": "Get playground bootstrap data",
+        "description": "Returns documents and metadata required to initialize the AI playground UI.",
+        "tags": [
+          "Documents",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Playground bootstrap data loaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "documents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "tagNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "correspondentNames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
           }
         }
       }
@@ -1872,6 +2306,166 @@
         }
       }
     },
+    "/api/history/{id}/detail": {
+      "get": {
+        "summary": "Get detailed history entry data",
+        "description": "Returns full stored AI output details and a live diff view against current Paperless metadata.",
+        "tags": [
+          "History",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detailed history data returned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid document ID"
+          },
+          "404": {
+            "description": "No history entry found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/history/{id}/restore": {
+      "post": {
+        "summary": "Restore document to pre-AI state",
+        "description": "Restores title, tags, correspondent and related metadata from saved original values.",
+        "tags": [
+          "History",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document restored successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid document ID"
+          },
+          "404": {
+            "description": "Original data not found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/history/{id}/rescan": {
+      "post": {
+        "summary": "Reset one document for reprocessing",
+        "description": "Removes all tracking records for a document so it is processed again in a subsequent scan.",
+        "tags": [
+          "History",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Document reset for rescanning",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid document ID"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
     "/api/settings/clear-tag-cache": {
       "post": {
         "summary": "Manually clear the centralized tag cache",
@@ -1911,6 +2505,90 @@
           },
           "429": {
             "description": "Too many requests - rate limit exceeded (max 10 requests per 15 minutes)"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/settings/reset-local-overrides": {
+      "post": {
+        "summary": "Reset local runtime overrides",
+        "description": "Removes local runtime override values so injected environment variables are used after restart.",
+        "tags": [
+          "Settings"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Override reset completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "hadOverrides": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/settings/rag-force-model-redownload": {
+      "post": {
+        "summary": "Force RAG model re-download",
+        "description": "Triggers re-download of RAG models in the background.",
+        "tags": [
+          "Settings",
+          "RAG"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Re-download trigger accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "description": "Server error"
@@ -2151,6 +2829,11 @@
                   "type": "object",
                   "properties": {
                     "success": {
+                      "type": "boolean",
+                      "description": "Indicates whether regeneration succeeded",
+                      "example": true
+                    },
+                    "newKey": {
                       "type": "string",
                       "description": "The newly generated API key",
                       "example": "3f7a8d6e2c1b5a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5"
@@ -3078,6 +3761,39 @@
         }
       }
     },
+    "/api/dashboard/stats": {
+      "get": {
+        "summary": "Get dashboard statistics payload",
+        "description": "Returns all aggregate counters and chart datasets required by the dashboard UI.",
+        "tags": [
+          "System",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dashboard statistics returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
     "/settings": {
       "get": {
         "summary": "Application settings page",
@@ -3374,6 +4090,50 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/settings/paperless-public-url": {
+      "get": {
+        "summary": "Detect Paperless public URL",
+        "description": "Detects and returns the public base URL used for document links.",
+        "tags": [
+          "Settings",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public URL resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "publicUrl": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
           }
         }
       }
@@ -4018,6 +4778,520 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/rag-test": {
+      "get": {
+        "summary": "Trigger RAG diagnostic run",
+        "description": "Initializes RAG and attempts to send documents to the RAG service.",
+        "tags": [
+          "RAG",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "RAG diagnostic completed successfully"
+          },
+          "500": {
+            "description": "RAG diagnostic failed"
+          }
+        }
+      }
+    },
+    "/dashboard/doc/{id}": {
+      "get": {
+        "summary": "Redirect to Paperless document details",
+        "tags": [
+          "Navigation",
+          "Documents"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to Paperless document page"
+          },
+          "400": {
+            "description": "Missing document ID"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/ocr": {
+      "get": {
+        "summary": "OCR queue page",
+        "tags": [
+          "Navigation",
+          "OCR"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OCR page rendered successfully",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/failed": {
+      "get": {
+        "summary": "Permanently failed queue page",
+        "tags": [
+          "Navigation",
+          "OCR"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Failed queue page rendered successfully",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/about": {
+      "get": {
+        "summary": "About and support information page",
+        "tags": [
+          "Navigation",
+          "System"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "About page rendered successfully",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/ocr/queue": {
+      "get": {
+        "summary": "Get paginated OCR queue",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OCR queue returned successfully"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/ocr/queue/add": {
+      "post": {
+        "summary": "Add document to OCR queue",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentId"
+                ],
+                "properties": {
+                  "documentId": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Add operation result"
+          },
+          "400": {
+            "description": "Invalid payload"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/ocr/queue/{documentId}": {
+      "delete": {
+        "summary": "Remove document from OCR queue",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "documentId",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Remove operation result"
+          },
+          "400": {
+            "description": "Invalid document ID"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/ocr/process/{documentId}": {
+      "post": {
+        "summary": "Process one OCR queue item",
+        "description": "Starts OCR processing for one document and streams progress via SSE.",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "documentId",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream started",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid document ID"
+          }
+        }
+      }
+    },
+    "/api/ocr/process-all": {
+      "post": {
+        "summary": "Process all pending OCR queue items",
+        "description": "Starts batch OCR processing and streams progress via SSE.",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream started",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ocr/analyze/{documentId}": {
+      "post": {
+        "summary": "Analyze existing OCR text with AI",
+        "description": "Uses existing OCR text and streams analysis progress via SSE.",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "documentId",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream started",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid document ID"
+          }
+        }
+      }
+    },
+    "/api/ocr/queue/{documentId}/text": {
+      "get": {
+        "summary": "Get OCR text for one queue item",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "documentId",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OCR text payload returned"
+          },
+          "400": {
+            "description": "Invalid document ID"
+          },
+          "404": {
+            "description": "Queue item not found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/ocr/stats": {
+      "get": {
+        "summary": "Get OCR queue statistics",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OCR statistics returned successfully"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/failed/queue": {
+      "get": {
+        "summary": "Get permanently failed document queue",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Failed queue returned successfully"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/failed/reset/{documentId}": {
+      "post": {
+        "summary": "Reset permanently failed document",
+        "tags": [
+          "OCR",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "documentId",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reset operation result"
+          },
+          "400": {
+            "description": "Invalid document ID"
+          },
+          "500": {
+            "description": "Server error"
           }
         }
       }

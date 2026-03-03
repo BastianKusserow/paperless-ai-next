@@ -124,6 +124,11 @@ res.write(`data: ${JSON.stringify({ progress: 50, message: 'Processing...' })}\n
 res.flush();
 ```
 
+### API Documentation Sync (MANDATORY)
+- When creating or changing API JSON/OpenAPI-related outputs, also update the corresponding `@swagger` JSDoc annotations in source files (`server.js`, `routes/*.js`, `schemas.js`).
+- Keep `OPENAPI/openapi.json` synchronized with current JSDoc definitions after API changes.
+- Do not merge API endpoint/response changes if JSDoc and generated OpenAPI spec are out of sync.
+
 ## Testing & Debugging
 
 ### Key Test Files
