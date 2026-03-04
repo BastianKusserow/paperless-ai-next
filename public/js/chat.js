@@ -237,11 +237,10 @@ function formatDocumentDate(createdValue) {
         return String(createdValue).slice(0, 10) || 'Unknown date';
     }
 
-    return new Intl.DateTimeFormat('en-US', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    }).format(parsedDate);
+    const year = parsedDate.getFullYear();
+    const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(parsedDate.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function createSearchMetaPill(text, type) {
@@ -388,7 +387,7 @@ async function loadChatDocuments(searchTerm = '', options = {}) {
             }
             setDocumentSearchStatus('No matching documents found.');
         } else {
-            setDocumentSearchStatus(`Showing ${documents.length} document${documents.length === 1 ? '' : 's'}.`);
+            setDocumentSearchStatus(`Currently ${documents.length} document${documents.length === 1 ? '' : 's'} available`);
         }
     } catch (error) {
         if (error.name === 'AbortError') {

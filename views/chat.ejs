@@ -26,13 +26,13 @@
                                 id="documentSearchInput"
                                 class="select-input"
                                 type="search"
-                                placeholder="Search documents (title, ID, correspondent) ..."
+                                placeholder="Search documents (title, ID, correspondent)..."
                                 value="<%= preselectedDocument ? preselectedDocument.title : '' %>"
                                 data-open-document-id="<%= open || '' %>"
                                 autocomplete="off">
                             <div id="documentSearchResults" class="search-results hidden" role="listbox" aria-label="Document search results"></div>
                             <input type="hidden" id="documentSelect" value="<%= open || '' %>">
-                            <p id="documentSearchStatus" class="search-status">Loading recent documents ...</p>
+                            <p id="documentSearchStatus" class="search-status">Loading recent documents...</p>
                         </div>
                     </div>
 

@@ -1,18 +1,18 @@
 ---
-title: "NEXT-021: Searchable Document Chat selector"
+title: "NEXT-021: Searchable document selectors"
 sidebar:
   hidden: true
 ---
 
 ## Feature / Problem Description
 
-The Document Chat page used a static dropdown with all documents rendered server-side.
+The Document Chat and Manual Review pages used static dropdown selectors with all documents rendered client-side or loaded as full lists.
 
-With larger installations this became hard to navigate, slow to open, and impractical to find a specific document quickly.
+With larger installations this became hard to navigate and impractical for quickly locating a specific document.
 
 ## Implementation
 
-The chat selector now uses API-backed search instead of rendering the full list up front.
+Document selection now uses API-backed omni-search instead of classic long dropdowns.
 
 - Added `GET /api/chat/documents` to provide compact search results for chat.
 - Added endpoint-specific rate limiting on `/api/chat/documents` in addition to the global limiter.
@@ -21,20 +21,23 @@ The chat selector now uses API-backed search instead of rendering the full list 
 - Updated chat UI (`views/chat.ejs`, `public/js/chat.js`, `public/css/chat.css`) with:
   - Search input with debounce
   - Dynamic option loading
+  - Keyboard navigation
   - Loading/empty/error status text
+- Updated manual review UI (`views/manual.ejs`, `views/partials/scripts/manual-scripts.ejs`, `public/css/dashboard.css`) with the same omni-search pattern and metadata pills (correspondent, date, ID).
 - Reduced initial `/chat` payload by preloading only the optionally requested `open` document.
 
 ## Testing
 
 ```bash
 node tests/test-chat-document-search.js
+node tests/test-chat-documents-service-search.js
 node tests/test-ignore-tags-filter.js
 ```
 
 ## Impact
 
 - Functionality / UX:
-  - Faster document lookup in Document Chat
+  - Faster document lookup in Document Chat and Manual Review
   - Better usability for instances with many documents
 - Performance:
   - Smaller initial chat page payload
@@ -47,7 +50,7 @@ node tests/test-ignore-tags-filter.js
 
 | Type | Link |
 | --- | --- |
-| Related issue | https://github.com/admonstrator/paperless-ai-next/issues/30 |
+| Related issue | [Issue #30](https://github.com/admonstrator/paperless-ai-next/issues/30) |
 
 ## Implementation Record
 
