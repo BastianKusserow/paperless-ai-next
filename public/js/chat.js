@@ -183,12 +183,14 @@ function setTheme(theme) {
     body.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
     
-    if (theme === 'dark') {
-        lightIcon.classList.add('hidden');
-        darkIcon.classList.remove('hidden');
-    } else {
-        lightIcon.classList.remove('hidden');
-        darkIcon.classList.add('hidden');
+    if (lightIcon && darkIcon) {
+        if (theme === 'dark') {
+            lightIcon.classList.add('hidden');
+            darkIcon.classList.remove('hidden');
+        } else {
+            lightIcon.classList.remove('hidden');
+            darkIcon.classList.add('hidden');
+        }
     }
 }
 
@@ -217,11 +219,36 @@ function setDocumentSearchStatus(message, isError = false) {
     statusElement.classList.toggle('error', isError);
 }
 
-function formatDocumentOptionLabel(document) {
-    if (document?.correspondent) {
-        return `${document.title} (${document.correspondent})`;
+function getDocumentTitle(doc) {
+    return doc?.title || `Document ${doc?.id || ''}`;
+}
+
+function formatDocumentOptionLabel(doc) {
+    return getDocumentTitle(doc);
+}
+
+function formatDocumentDate(createdValue) {
+    if (!createdValue) {
+        return 'Unknown date';
     }
-    return document?.title || `Document ${document?.id || ''}`;
+
+    const parsedDate = new Date(createdValue);
+    if (Number.isNaN(parsedDate.getTime())) {
+        return String(createdValue).slice(0, 10) || 'Unknown date';
+    }
+
+    return new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(parsedDate);
+}
+
+function createSearchMetaPill(text, type) {
+    const pill = document.createElement('span');
+    pill.className = `search-result-pill ${type}`;
+    pill.textContent = text;
+    return pill;
 }
 
 function clearSearchResults() {
@@ -253,7 +280,7 @@ function setSelectedDocument(doc, startChat = true) {
     searchInput.value = formatDocumentOptionLabel(doc);
     searchInput.dataset.selectedDocumentId = String(doc.id);
     clearSearchResults();
-    setDocumentSearchStatus(`Selected: ${formatDocumentOptionLabel(doc)}`);
+    setDocumentSearchStatus(`Selected: ${getDocumentTitle(doc)}`);
 
     if (startChat) {
         initializeChat(doc.id);
@@ -280,7 +307,23 @@ function renderSearchResults(documents = []) {
         item.setAttribute('role', 'option');
         item.setAttribute('aria-selected', 'false');
         item.dataset.index = String(index);
-        item.textContent = formatDocumentOptionLabel(doc);
+
+        const titleElement = document.createElement('div');
+        titleElement.className = 'search-result-title';
+        titleElement.textContent = getDocumentTitle(doc);
+
+        const metaRow = document.createElement('div');
+        metaRow.className = 'search-result-meta';
+
+        const correspondentLabel = doc?.correspondent || 'No correspondent';
+        const dateLabel = formatDocumentDate(doc?.created);
+        const idLabel = `ID ${doc?.id || '-'}`;
+        metaRow.appendChild(createSearchMetaPill(correspondentLabel, 'correspondent'));
+        metaRow.appendChild(createSearchMetaPill(dateLabel, 'date'));
+        metaRow.appendChild(createSearchMetaPill(idLabel, 'id'));
+
+        item.appendChild(titleElement);
+        item.appendChild(metaRow);
 
         item.addEventListener('mousedown', (event) => {
             event.preventDefault();
