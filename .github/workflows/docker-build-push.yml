@@ -36,6 +36,7 @@ jobs:
       version_tag: ${{ steps.version.outputs.tag }}
       base_version: ${{ steps.version.outputs.base }}
       commit_sha: ${{ steps.source_commit.outputs.commit_sha }}
+      source_ref: ${{ steps.source_ref.outputs.source_ref }}
     
     steps:
       - name: Checkout code
@@ -83,6 +84,12 @@ jobs:
           echo "commit_sha=$COMMIT_SHA" >> $GITHUB_OUTPUT
           echo "✅ build source commit resolved to $COMMIT_SHA"
 
+      - name: Resolve source ref
+        id: source_ref
+        run: |
+          echo "source_ref=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+          echo "✅ workflow source ref resolved to ${GITHUB_REF_NAME}"
+
   # Job 3: Publish Release/Tag (only after successful image builds)
   publish-release:
     name: Publish Release and Tag
@@ -108,6 +115,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION_TAG="${{ needs.generate-version.outputs.version_tag }}"
+          SOURCE_REF="${{ needs.generate-version.outputs.source_ref }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
@@ -115,7 +123,7 @@ jobs:
           sed -i "s|PAPERLESS_AI_VERSION: '.*'|PAPERLESS_AI_VERSION: '${VERSION_TAG}'|" config/config.js
           git add config/config.js
           git diff --cached --quiet || git commit -m "🤖 Bump version to ${VERSION_TAG} [automated]"
-          git push origin HEAD
+          git push origin "HEAD:refs/heads/${SOURCE_REF}"
 
           COMMIT_SHA=$(git rev-parse HEAD)
 
@@ -203,7 +211,8 @@ jobs:
         id: base
         run: |
           BASE_IMAGE="${{ env.DOCKERHUB_REPO }}:latest-base-lite"
-          BASE_DIGEST=$(docker buildx imagetools inspect "$BASE_IMAGE" --format '{{.Manifest.Digest}}' || true)
+          BASE_DIGEST=$(docker buildx imagetools inspect "$BASE_IMAGE" 2>/dev/null | awk '/^Digest:/ { print $2; exit }' || true)
+          BASE_DIGEST=$(printf '%s' "$BASE_DIGEST" | tr -d '\r\n')
           if [ -z "$BASE_DIGEST" ]; then
             BASE_DIGEST="unavailable"
           fi
@@ -273,7 +282,8 @@ jobs:
         id: base
         run: |
           BASE_IMAGE="${{ env.DOCKERHUB_REPO }}:latest-base-full"
-          BASE_DIGEST=$(docker buildx imagetools inspect "$BASE_IMAGE" --format '{{.Manifest.Digest}}' || true)
+          BASE_DIGEST=$(docker buildx imagetools inspect "$BASE_IMAGE" 2>/dev/null | awk '/^Digest:/ { print $2; exit }' || true)
+          BASE_DIGEST=$(printf '%s' "$BASE_DIGEST" | tr -d '\r\n')
           if [ -z "$BASE_DIGEST" ]; then
             BASE_DIGEST="unavailable"
           fi
