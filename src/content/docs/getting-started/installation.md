@@ -74,8 +74,10 @@ Then open [http://localhost:3000](http://localhost:3000) and follow the [First S
 
 Need all available Docker environment variables? See the [Configuration reference](configuration/#docker-environment-variables).
 
-:::caution[Important]
-Because the setup assistant does not yet cover all options, Docker environment variables are currently near-mandatory for reliable deployments. At minimum, set: `PAPERLESS_API_URL`, `PAPERLESS_API_TOKEN`, `AI_PROVIDER`, and provider-specific credentials (for example `OPENAI_API_KEY`, or `OLLAMA_API_URL` + `OLLAMA_MODEL`, or `AZURE_*`, or `CUSTOM_*`).
+:::note[Installer + env workflow]
+The new installer covers the complete first-run path (admin, optional MFA, Paperless test, metadata rules, AI test, optional OCR, and review/finish).
+
+For reproducible infrastructure (CI/CD, GitOps, immutable deployments), you can still pre-seed values via environment variables and use the installer mainly as a validation and bootstrap UI.
 :::
 
 :::tip[Same Docker network as Paperless-ngx?]

@@ -2,12 +2,24 @@
 title: "Configuration"
 ---
 
+The initial installer now covers the main first-run configuration flow and writes values to `data/.env`.
 
-The setup assistant is currently not fully aligned with all available options.
-
-For Docker deployments, environment variables should be treated as the primary configuration method (especially for initial setup and automation).
+For Docker automation (CI/CD, GitOps, immutable deployments), environment variables remain the preferred source of truth.
 
 The settings are saved in `data/.env` inside your mounted data directory.
+
+---
+
+## Installer coverage (first run)
+
+The installer configures:
+
+- Admin account and optional MFA onboarding
+- Paperless connection test
+- Metadata-driven processing rules (include/exclude tags, processed tag, scan behavior)
+- AI provider preset + connection test
+- Optional Mistral OCR fallback
+- Final `.env` preview and setup completion
 
 ---
 

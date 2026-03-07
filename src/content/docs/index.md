@@ -86,33 +86,26 @@ Process any document on demand through the web interface, tweak results, or reve
 
 ## Exclusive to Paperless-AI next
 
-### OCR rescue queue (Mistral)
+| Feature                                     | Paperless-AI | Paperless-AI next |
+| ------------------------------------------- | ------------ | ------------------------------------------------------------------------------------------- |
+| **Core automation**                         |              |                                                                                             |
+| AI-based document classification            | ✅            | ✅                                                                                           |
+| Paperless-ngx integration                   | ✅            | ✅                                                                                           |
+| Basic manual processing flows               | ✅            | ✅                                                                                           |
+| **Performance and scale**                   |              |                                                                                             |
+| Server-side history pagination              | ❌            | ✅                                                                                           |
+| Tag caching with reduced API calls          | ❌            | ✅                                                                                           |
+| Faster dashboard behavior under high volume | ❌            | ✅                                                                                           |
+| **Security and reliability**                |              |                                                                                             |
+| Security-focused dependency maintenance     | ✅            | ✅                                                                                           |
+| Global API + SSE rate limiting              | ❌            | ✅                                                                                           |
+| MFA login support                           | ❌            | ✅                                                                                           |
+| **OCR and recovery workflows**              |              |                                                                                             |
+| Works with blurry documents and images      | ❌            | ✅                                                                                           |
+| **UX and operations**                       |              |                                                                                             |
+| Searchable document picker in chat          | ❌            | ✅                                                                                           |
+| Settings tabs with runtime ENV hints        | ❌            | ✅                                                                                           |
 
-Poorly scanned documents can be sent through a dedicated OCR queue before tagging.
-
-### History info modal + rescan
-
-Detailed history view with metadata/tag diff, token stats, and one-click rescan.
-
-### Restore original metadata
-
-Restore original title, tags, correspondent, plus document type and language from history.
-
-### Ignore tags processing filter
-
-Exclude selected documents from AI processing and keep dashboard stats consistent.
-
-### Permanently failed queue
-
-Documents with hard AI/OCR failures are tracked separately with manual reset flow.
-
-### Date/Boolean custom fields
-
-Settings UI supports additional custom field types (Date and Boolean).
-
-### Better settings interface
-
-Improved UI with clearer explanations, tooltips, and validation.
 
 ***
 
@@ -146,14 +139,12 @@ services:
       - "3000:3000"
     volumes:
       - data:/app/data
-    environment:
-      - PAPERLESS_AI_INITIAL_SETUP=yes
 
 volumes:
   data:
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and follow the setup wizard.
+Open [http://localhost:3000](http://localhost:3000) and complete the 7-step initial installer (account, optional MFA, Paperless test, metadata rules, AI test, optional OCR, review/finish).
 
 :::caution[Important]
 It is highly recommended to use an reverse proxy (e.g. Nginx, Caddy) in front of Paperless-AI next for security and performance, especially if you expose it to the internet - which is not a recommended practice at this time.

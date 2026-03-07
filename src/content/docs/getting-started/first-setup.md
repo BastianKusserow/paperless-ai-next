@@ -2,14 +2,23 @@
 title: "First Setup"
 ---
 
+After starting the container for the first time, open [http://localhost:3000](http://localhost:3000) in your browser.
 
-After starting the container for the first time, open [http://localhost:3000](http://localhost:3000) in your browser. You'll be greeted by the setup wizard.
+Paperless-AI next now uses a guided **7-step initial installer** with built-in validation for Paperless and AI connectivity.
 
 Need all available Docker environment variables? See the [Configuration reference](configuration/#docker-environment-variables).
 
-:::caution[Current limitation]
-The setup assistant is not yet complete for all configuration paths.
-In Docker environments, you should define the key variables directly via `environment:` / `.env` (at minimum `PAPERLESS_API_URL`, `PAPERLESS_API_TOKEN`, `AI_PROVIDER`, and matching provider credentials).
+## Before you start
+
+Have these values ready:
+
+- Paperless-ngx URL (base URL, not `/api`)
+- Paperless username
+- Paperless API token
+- AI provider details (provider URL, model, and credentials if required)
+
+:::tip
+If Paperless-ngx and Paperless-AI next run in the same Docker network, use the service name (for example `http://paperless-ngx:8000`) instead of `localhost`.
 :::
 
 :::note[MFA lockout recovery]
@@ -19,55 +28,47 @@ See [Troubleshooting -> MFA lockout recovery](troubleshooting/#mfa-lockout-recov
 
 ---
 
-## Step 1: Create an Admin Account
+## Installer steps
 
-Choose a username and a secure password. This account is used to log in to Paperless-AI.
+| Step | What happens |
+| --- | --- |
+| **1. Admin account** | Create the first local Paperless-AI next admin user (password must be at least 8 characters). |
+| **2. MFA setup (optional)** | Optionally enable MFA for that admin account and confirm a TOTP code. |
+| **3. Paperless connection** | Enter Paperless URL, username, and token, then run **Test Paperless connection**. |
+| **4. Paperless metadata** | Load document/tag/correspondent counts and define include/exclude/processed tag behavior plus scan interval. |
+| **5. AI credentials** | Select a provider preset, configure API URL/model/token, then run **Test AI connection**. |
+| **6. Mistral OCR (optional)** | Enable OCR fallback and set Mistral credentials/model if needed. |
+| **7. Review and finish** | Review generated `.env` values, copy them if needed, and finalize setup. |
 
----
+### Provider notes
 
-## Step 2: Connect to Paperless-ngx
+- `openai` and `azure` require an API token.
+- `custom` endpoints can leave token empty if the endpoint allows anonymous access.
+- `ollama` uses URL + model and usually no token.
 
-You'll need two things from your Paperless-ngx instance:
+### Validation gates
 
-**API URL** – The address of your Paperless-ngx server, e.g. `http://paperless:8000` or `http://192.168.1.100:8000`. If Paperless-ngx and Paperless-AI next are in the same Docker network, use the service name (e.g. `http://paperless-ngx:8000`).
-
-**API Token** – Found in Paperless-ngx under *Settings → API Tokens*. Create a new token with full permissions.
-
----
-
-## Step 3: Choose Your AI Provider
-
-Select which AI service should analyze your documents:
-
-| Provider | What you need |
-|---|---|
-| **OpenAI** | An API key from [platform.openai.com](https://platform.openai.com) |
-| **Ollama** | Ollama running locally or on your server |
-| **Azure OpenAI** | Azure endpoint + API key + deployment name |
-| **Custom / Compatible** | Any OpenAI-compatible API URL + key |
-
-Not sure which to pick? **Ollama** is the privacy-friendly choice (everything runs locally). **OpenAI** is the easiest to get started with.
+- Step 3 and step 5 include explicit connection tests.
+- You can continue after a failed test, but this should only be used for advanced scenarios where reachability is expected later.
 
 ---
 
-## Step 4: Configure Processing Preferences
+## What happens after Finish?
 
-- **Which documents to process** – All new documents, or only those with a specific tag
-- **What to assign** – Tags, document type, correspondent, language
-- **Restrictions** – Should the AI only use tags and correspondents that already exist in Paperless-ngx?
+When you click **Save and restart container**, the installer writes configuration to `data/.env`, creates the admin user, and triggers an app restart.
 
----
+In most Docker setups (`restart: unless-stopped`), this restart happens automatically.
 
-## Step 5: Save and Restart
+If your container is not configured to auto-restart, restart it manually once.
 
-Click **Save**. Then restart the container once to apply the configuration and start the background processing service.
+After successful setup:
 
-:::caution[Don't skip the restart]
-The document processing loop only starts after a clean restart following the initial setup.
-:::
+- `/setup` is no longer accessible
+- you are redirected to login
+- further changes are done via `/settings`
 
 ---
 
-## You're Done!
+## You're Done
 
-Paperless-AI next will now automatically pick up new documents added to Paperless-ngx, analyze them, and assign metadata. Check the [History](../features/history/) page to see what's been processed.
+Paperless-AI next will now automatically pick up new documents added to Paperless-ngx, analyze them, and assign metadata based on your selected rules. Check [History](../features/history/) to see what has been processed.
