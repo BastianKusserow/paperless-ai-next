@@ -195,12 +195,14 @@ async function writePromptToFile(systemPrompt, truncatedContent, filePath = '/ap
  * @param {string} urlString - The URL string to validate
  * @param {Object} options - Validation options
  * @param {boolean} options.allowPrivateIPs - Allow private IP addresses (default: false)
+ * @param {boolean} options.allowLocalhost - Allow localhost/loopback addresses (default: false)
  * @param {string[]} options.allowedProtocols - Allowed protocols (default: ['http:', 'https:'])
  * @returns {{ valid: boolean, url?: URL, error?: string }} Validation result with parsed URL if valid
  */
 function validateUrl(urlString, options = {}) {
     const {
         allowPrivateIPs = false,
+        allowLocalhost = false,
         allowedProtocols = ['http:', 'https:']
     } = options;
 
@@ -220,15 +222,25 @@ function validateUrl(urlString, options = {}) {
         return { valid: false, error: `Protocol ${parsedUrl.protocol} is not allowed` };
     }
 
-    // Block localhost and loopback addresses (unless explicitly allowed)
-    if (!allowPrivateIPs) {
-        const hostname = parsedUrl.hostname.toLowerCase();
-        
-        // Block localhost variations
-        if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
-            return { valid: false, error: 'Localhost addresses are not allowed' };
-        }
+    const hostname = parsedUrl.hostname.toLowerCase();
 
+    // Block localhost and loopback by default, even when private networks are allowed.
+    if (!allowLocalhost && (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1')) {
+        return { valid: false, error: 'Localhost addresses are not allowed' };
+    }
+
+    // Always block cloud metadata endpoints.
+    const metadataEndpoints = [
+        '169.254.169.254', // AWS, GCP, Azure metadata
+        'metadata.google.internal',
+        'metadata.goog',
+    ];
+    if (metadataEndpoints.some(endpoint => hostname === endpoint || hostname.endsWith('.' + endpoint))) {
+        return { valid: false, error: 'Cloud metadata endpoints are not allowed' };
+    }
+
+    // Block private networks unless explicitly allowed.
+    if (!allowPrivateIPs) {
         // Block private IP ranges
         const ipPatterns = [
             /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/,        // 10.0.0.0/8
@@ -255,20 +267,10 @@ function validateUrl(urlString, options = {}) {
             if (/^f[cd][0-9a-f]{2}:/i.test(cleanedHostname)) {
                 return { valid: false, error: 'Private IPv6 addresses are not allowed' };
             }
-            // Loopback (::1) and unspecified (::)
-            if (cleanedHostname === '::' || cleanedHostname === '::1') {
+            // Unspecified (::)
+            if (cleanedHostname === '::') {
                 return { valid: false, error: 'Private IPv6 addresses are not allowed' };
             }
-        }
-
-        // Block cloud metadata endpoints
-        const metadataEndpoints = [
-            '169.254.169.254', // AWS, GCP, Azure metadata
-            'metadata.google.internal',
-            'metadata.goog',
-        ];
-        if (metadataEndpoints.some(endpoint => hostname === endpoint || hostname.endsWith('.' + endpoint))) {
-            return { valid: false, error: 'Cloud metadata endpoints are not allowed' };
         }
     }
 
@@ -282,11 +284,13 @@ function validateUrl(urlString, options = {}) {
  * @param {string} urlString - The URL string to validate
  * @param {Object} options - Additional options
  * @param {boolean} options.allowPrivateIPs - Allow private IP addresses for internal services (default: false)
+ * @param {boolean} options.allowLocalhost - Allow localhost/loopback addresses (default: false)
  * @returns {{ valid: boolean, url?: URL, error?: string }} Validation result
  */
 function validateApiUrl(urlString, options = {}) {
     return validateUrl(urlString, {
         allowPrivateIPs: options.allowPrivateIPs || false,
+        allowLocalhost: options.allowLocalhost || false,
         allowedProtocols: ['http:', 'https:']
     });
 }

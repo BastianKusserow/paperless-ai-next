@@ -853,6 +853,7 @@ class SetupWizard {
         try {
             const payload = this.buildFinalizePayload();
             const result = await this.request('/api/setup/complete', payload);
+            const postRestartRedirectTarget = result.redirectTo || '/login';
 
             if (result.envPreview) {
                 this.envPreview.value = result.envPreview;
@@ -879,7 +880,7 @@ class SetupWizard {
                             countdown -= 1;
                             if (countdown < 0) {
                                 clearInterval(intervalId);
-                                window.location.href = '/dashboard';
+                                window.location.href = postRestartRedirectTarget;
                                 return;
                             }
 

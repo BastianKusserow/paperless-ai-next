@@ -16,7 +16,7 @@ const RAGService = require('../services/ragService.js');
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
-const { validateCustomFieldValue, shouldQueueForOcrOnAiError, classifyOcrQueueReasonFromAiError } = require('../services/serviceUtils');
+const { validateApiUrl, validateCustomFieldValue, shouldQueueForOcrOnAiError, classifyOcrQueueReasonFromAiError } = require('../services/serviceUtils');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const QRCode = require('qrcode');
@@ -30,6 +30,30 @@ require('dotenv').config({ path: '../data/.env' });
 function isChatEnabled() {
   const ragEnabled = process.env.RAG_SERVICE_ENABLED === 'true';
   return ragEnabled;
+}
+
+function getCookieSecureMode() {
+  return typeof config.getCookieSecureMode === 'function'
+    ? config.getCookieSecureMode()
+    : String(process.env.COOKIE_SECURE_MODE || 'auto').trim().toLowerCase();
+}
+
+function shouldUseSecureCookies(req) {
+  const mode = getCookieSecureMode();
+
+  if (mode === 'always') {
+    return true;
+  }
+
+  if (mode === 'never') {
+    return false;
+  }
+
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  return Boolean(req.secure || forwardedProto === 'https');
 }
 
 const SETTINGS_SECRET_FIELDS = [
@@ -587,7 +611,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       );
       res.cookie('jwt', token, {
         httpOnly: true,
-        secure: false,
+        secure: shouldUseSecureCookies(req),
         sameSite: 'lax',
         path: '/',
         maxAge: 24 * 60 * 60 * 1000
@@ -621,7 +645,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         );
         res.cookie(MFA_CHALLENGE_COOKIE, challengeToken, {
           httpOnly: true,
-          secure: false,
+          secure: shouldUseSecureCookies(req),
           sameSite: 'lax',
           path: '/'
         });
@@ -642,7 +666,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       );
       res.cookie('jwt', token, {
         httpOnly: true,
-        secure: false,  
+        secure: shouldUseSecureCookies(req),
         sameSite: 'lax', 
         path: '/',
         maxAge: 24 * 60 * 60 * 1000 
@@ -3093,6 +3117,13 @@ function parseBooleanInput(value, defaultValue = false) {
   return defaultValue;
 }
 
+function getSetupUrlValidationOptions() {
+  return {
+    allowPrivateIPs: true,
+    allowLocalhost: parseBooleanInput(process.env.PAPERLESS_AI_SETUP_ALLOW_LOCALHOST, false)
+  };
+}
+
 function normalizeTagListInput(value) {
   if (!value) {
     return [];
@@ -3666,6 +3697,14 @@ router.post('/api/setup/paperless/metadata', express.json(), async (req, res) =>
       });
     }
 
+    const urlValidation = validateApiUrl(normalizedUrl, getSetupUrlValidationOptions());
+    if (!urlValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        error: `Invalid Paperless API URL: ${urlValidation.error}`
+      });
+    }
+
     const initialized = await paperlessService.initializeWithCredentials(`${normalizedUrl}/api`, paperlessToken);
     if (!initialized) {
       return res.status(400).json({
@@ -3941,10 +3980,16 @@ router.post('/api/setup/complete', express.json(), async (req, res) => {
 
     const envPreview = toEnvPreviewLines(finalConfig);
 
+    // Enforce a fresh login after setup completion.
+    res.clearCookie('jwt');
+    res.clearCookie(MFA_CHALLENGE_COOKIE);
+    res.clearCookie(MFA_SETUP_COOKIE);
+
     res.json({
       success: true,
       message: 'Initial setup completed successfully.',
       restart: true,
+      redirectTo: '/login',
       envPreview
     });
 
@@ -4913,6 +4958,7 @@ router.get('/settings', async (req, res) => {
     GLOBAL_RATE_LIMIT_WINDOW_MS: process.env.GLOBAL_RATE_LIMIT_WINDOW_MS || '900000',
     GLOBAL_RATE_LIMIT_MAX: process.env.GLOBAL_RATE_LIMIT_MAX || '1000',
     TRUST_PROXY: typeof process.env.TRUST_PROXY === 'undefined' ? '' : process.env.TRUST_PROXY,
+    COOKIE_SECURE_MODE: process.env.COOKIE_SECURE_MODE || 'auto',
     MIN_CONTENT_LENGTH: process.env.MIN_CONTENT_LENGTH || '10',
     PAPERLESS_AI_PORT: process.env.PAPERLESS_AI_PORT || '3000'
   };
@@ -5099,7 +5145,7 @@ router.post('/api/settings/mfa/setup', isAuthenticated, express.json(), async (r
 
     res.cookie(MFA_SETUP_COOKIE, setupToken, {
       httpOnly: true,
-      secure: false,
+      secure: shouldUseSecureCookies(req),
       sameSite: 'lax',
       path: '/'
     });
@@ -6257,6 +6303,7 @@ router.post('/settings', express.json(), async (req, res) => {
       globalRateLimitWindowMs,
       globalRateLimitMax,
       trustProxy,
+      cookieSecureMode,
       minContentLength,
       paperlessAiPort,
       externalApiAllowPrivateIps
@@ -6325,6 +6372,7 @@ router.post('/settings', express.json(), async (req, res) => {
       GLOBAL_RATE_LIMIT_WINDOW_MS: process.env.GLOBAL_RATE_LIMIT_WINDOW_MS || '900000',
       GLOBAL_RATE_LIMIT_MAX: process.env.GLOBAL_RATE_LIMIT_MAX || '1000',
       TRUST_PROXY: typeof process.env.TRUST_PROXY === 'undefined' ? '' : process.env.TRUST_PROXY,
+      COOKIE_SECURE_MODE: process.env.COOKIE_SECURE_MODE || 'auto',
       MIN_CONTENT_LENGTH: process.env.MIN_CONTENT_LENGTH || '10',
       PAPERLESS_AI_PORT: process.env.PAPERLESS_AI_PORT || '3000'
     };
@@ -6525,6 +6573,16 @@ router.post('/settings', express.json(), async (req, res) => {
       if (globalRateLimitWindowMs) updatedConfig.GLOBAL_RATE_LIMIT_WINDOW_MS = globalRateLimitWindowMs;
       if (globalRateLimitMax) updatedConfig.GLOBAL_RATE_LIMIT_MAX = globalRateLimitMax;
       if (typeof trustProxy === 'string') updatedConfig.TRUST_PROXY = trustProxy.trim();
+      if (typeof cookieSecureMode === 'string') {
+        const normalizedCookieSecureMode = cookieSecureMode.trim().toLowerCase();
+        if (['auto', 'always', 'never'].includes(normalizedCookieSecureMode)) {
+          updatedConfig.COOKIE_SECURE_MODE = normalizedCookieSecureMode;
+        } else {
+          return res.status(400).json({
+            error: 'Invalid Cookie Secure Mode. Allowed values: auto, always, never.'
+          });
+        }
+      }
       if (minContentLength) updatedConfig.MIN_CONTENT_LENGTH = minContentLength;
       if (paperlessAiPort) updatedConfig.PAPERLESS_AI_PORT = paperlessAiPort;
 

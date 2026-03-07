@@ -120,6 +120,36 @@ if (trustProxy !== false) {
   app.set('trust proxy', trustProxy);
 }
 
+function getCookieSecureMode() {
+  return typeof config.getCookieSecureMode === 'function'
+    ? config.getCookieSecureMode()
+    : String(process.env.COOKIE_SECURE_MODE || 'auto').trim().toLowerCase();
+}
+
+function shouldUseSecureCookies(req) {
+  const mode = getCookieSecureMode();
+
+  if (mode === 'always') {
+    return true;
+  }
+
+  if (mode === 'never') {
+    return false;
+  }
+
+  if (req) {
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '')
+      .split(',')[0]
+      .trim()
+      .toLowerCase();
+    return Boolean(req.secure || forwardedProto === 'https');
+  }
+
+  return String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+}
+
+const csrfCookieSecure = shouldUseSecureCookies();
+
 // Retry tracking to prevent infinite retry loops
 const retryTracker = new Map();
 
@@ -239,12 +269,25 @@ const {
   doubleCsrfProtection,
 } = doubleCsrf({
   getSecret: () => JWT_SECRET,
-  getSessionIdentifier: () => "psai-session", // Stable identifier for stateless JWT auth
+  getSessionIdentifier: (req) => {
+    const token = req.cookies?.jwt || req.headers.authorization?.split(' ')[1];
+    if (token) {
+      return `jwt:${token}`;
+    }
+
+    const apiKey = req.headers['x-api-key'];
+    const currentApiKey = config.getApiKey();
+    if (currentApiKey && apiKey && apiKey === currentApiKey) {
+      return `api-key:${apiKey}`;
+    }
+
+    return `ip:${req.ip || 'unknown'}`;
+  },
   cookieName: "psai.x-csrf-token",
   cookieOptions: {
     sameSite: "lax",
     path: "/",
-    secure: false, // Set to true if using HTTPS
+    secure: csrfCookieSecure,
   },
   size: 64,
   ignoredMethods: ["GET", "HEAD", "OPTIONS"],

@@ -67,6 +67,15 @@ const getTrustProxy = () => {
   return trustProxy;
 };
 
+const getCookieSecureMode = () => {
+  const mode = String(process.env.COOKIE_SECURE_MODE || 'auto').trim().toLowerCase();
+  if (mode === 'always' || mode === 'never' || mode === 'auto') {
+    return mode;
+  }
+
+  return 'auto';
+};
+
 // Initialize limit functions with defaults
 const limitFunctions = {
   activateTagging: parseEnvBoolean(process.env.ACTIVATE_TAGGING, 'yes'),
@@ -114,6 +123,7 @@ module.exports = {
   getApiKey,
   getJwtSecret,
   getTrustProxy,
+  getCookieSecureMode,
   get apiKey() {
     return getApiKey();
   },
@@ -122,6 +132,9 @@ module.exports = {
   },
   get trustProxy() {
     return getTrustProxy();
+  },
+  get cookieSecureMode() {
+    return getCookieSecureMode();
   },
   disableAutomaticProcessing: process.env.DISABLE_AUTOMATIC_PROCESSING || 'no',
   exposeApiDocs: parseEnvBoolean(process.env.EXPOSE_API_DOCS, 'no'),

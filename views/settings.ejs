@@ -774,6 +774,15 @@
                                         <p class="text-xs text-gray-500">ENV: TRUST_PROXY · Restart required</p>
                                     </div>
                                     <div class="space-y-2">
+                                        <label for="cookieSecureMode" class="text-sm font-medium">Cookie Secure Mode</label>
+                                        <select id="cookieSecureMode" name="cookieSecureMode" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                                            <option value="auto" <%= String(config.COOKIE_SECURE_MODE || 'auto').toLowerCase() === 'auto' ? 'selected' : '' %>>auto</option>
+                                            <option value="always" <%= String(config.COOKIE_SECURE_MODE || 'auto').toLowerCase() === 'always' ? 'selected' : '' %>>always</option>
+                                            <option value="never" <%= String(config.COOKIE_SECURE_MODE || 'auto').toLowerCase() === 'never' ? 'selected' : '' %>>never</option>
+                                        </select>
+                                        <p class="text-xs text-gray-500">ENV: COOKIE_SECURE_MODE · Restart required</p>
+                                    </div>
+                                    <div class="space-y-2">
                                         <label for="minContentLength" class="text-sm font-medium">Minimum content length</label>
                                         <input type="number" id="minContentLength" name="minContentLength" value="<%= config.MIN_CONTENT_LENGTH || 10 %>" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                                         <p class="text-xs text-gray-500">ENV: MIN_CONTENT_LENGTH · Restart required</p>

@@ -15,6 +15,62 @@ class SetupService {
     this.configured = null; // Variable to store the configuration status
   }
 
+  normalizeEnvironmentValue(value) {
+    if (value == null) {
+      return '';
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((entry) => String(entry ?? '').trim()).filter(Boolean).join(',');
+    }
+
+    if (typeof value === 'object') {
+      return JSON.stringify(value);
+    }
+
+    return String(value);
+  }
+
+  encodeEnvValue(value) {
+    // Quote values to prevent newline/equals injection in KEY=value format.
+    return JSON.stringify(this.normalizeEnvironmentValue(value));
+  }
+
+  decodeEnvValue(value) {
+    const trimmed = String(value ?? '').trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    // Support values written as JSON-quoted strings.
+    if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+      try {
+        const decoded = JSON.parse(trimmed);
+        return decoded == null ? '' : String(decoded);
+      } catch (_error) {
+        return trimmed;
+      }
+    }
+
+    // Compatibility with single-quoted env values.
+    if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+      return trimmed.slice(1, -1);
+    }
+
+    return trimmed;
+  }
+
+  getSetupUrlValidationOptions() {
+    const allowLocalhost = ['true', '1', 'yes', 'on'].includes(
+      String(process.env.PAPERLESS_AI_SETUP_ALLOW_LOCALHOST || '').trim().toLowerCase()
+    );
+
+    return {
+      allowPrivateIPs: true,
+      allowLocalhost
+    };
+  }
+
   async loadRuntimeOverrides() {
     try {
       const content = await fs.readFile(this.runtimeOverridesPath, 'utf8');
@@ -62,11 +118,24 @@ class SetupService {
       const runtimeOverrides = await this.loadRuntimeOverrides();
       const envContent = await fs.readFile(this.envPath, 'utf8');
       const config = {};
-      envContent.split('\n').forEach(line => {
-        const [key, value] = line.split('=');
-        if (key && value) {
-          config[key.trim()] = value.trim();
+      envContent.split('\n').forEach((line) => {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith('#')) {
+          return;
         }
+
+        const separatorIndex = trimmedLine.indexOf('=');
+        if (separatorIndex <= 0) {
+          return;
+        }
+
+        const key = trimmedLine.slice(0, separatorIndex).trim();
+        const value = trimmedLine.slice(separatorIndex + 1);
+        if (!key) {
+          return;
+        }
+
+        config[key] = this.decodeEnvValue(value);
       });
       return {
         ...config,
@@ -90,7 +159,7 @@ class SetupService {
     try {
       // Validate URL to prevent SSRF attacks
       // Allow private IPs since Paperless-ngx is typically deployed in a private network
-      const urlValidation = validateApiUrl(url, { allowPrivateIPs: true });
+      const urlValidation = validateApiUrl(url, this.getSetupUrlValidationOptions());
       if (!urlValidation.valid) {
         console.error('Paperless URL validation error:', urlValidation.error);
         return false;
@@ -111,7 +180,7 @@ class SetupService {
 
   async validateApiPermissions(url, token) {
     // Validate URL first to prevent SSRF
-    const urlValidation = validateApiUrl(url, { allowPrivateIPs: true });
+    const urlValidation = validateApiUrl(url, this.getSetupUrlValidationOptions());
     if (!urlValidation.valid) {
       console.error('API URL validation error:', urlValidation.error);
       return { success: false, message: `URL validation failed: ${urlValidation.error}` };
@@ -163,7 +232,7 @@ class SetupService {
   async validateCustomConfig(url, apiKey, model) {
     // Validate URL to prevent SSRF attacks
     // Allow private IPs since custom AI services may be hosted internally
-    const urlValidation = validateApiUrl(url, { allowPrivateIPs: true });
+    const urlValidation = validateApiUrl(url, this.getSetupUrlValidationOptions());
     if (!urlValidation.valid) {
       console.error('Custom AI URL validation error:', urlValidation.error);
       return false;
@@ -175,7 +244,11 @@ class SetupService {
       apiKey: apiKey || CUSTOM_PROVIDER_FALLBACK_API_KEY,
       model: model
     };
-    console.log('Custom AI config:', config);
+    console.log('Custom AI config:', {
+      baseURL: config.baseURL,
+      apiKey: config.apiKey ? '[REDACTED]' : '',
+      model: config.model
+    });
     try {
       const openai = new OpenAI({ 
         apiKey: config.apiKey, 
@@ -187,7 +260,7 @@ class SetupService {
       });
       return completion.choices && completion.choices.length > 0;
     } catch (error) {
-      console.error('Custom AI validation error:', error);
+      console.error('Custom AI validation error:', error.message);
       return false;
     }
   }
@@ -198,7 +271,7 @@ class SetupService {
     try {
       // Validate URL to prevent SSRF attacks
       // Allow private IPs since Ollama is typically hosted locally
-      const urlValidation = validateApiUrl(url, { allowPrivateIPs: true });
+      const urlValidation = validateApiUrl(url, this.getSetupUrlValidationOptions());
       if (!urlValidation.valid) {
         console.error('Ollama URL validation error:', urlValidation.error);
         return false;
@@ -329,12 +402,7 @@ class SetupService {
       await fs.mkdir(dataDir, { recursive: true });
 
       const envContent = Object.entries(config)
-        .map(([key, value]) => {
-          if (key === "SYSTEM_PROMPT") {
-            return `${key}=\`${value}\n\``;
-          }
-          return `${key}=${value}`;
-        })
+        .map(([key, value]) => `${key}=${this.encodeEnvValue(value)}`)
         .join('\n');
 
       await fs.writeFile(this.envPath, envContent);
@@ -342,7 +410,7 @@ class SetupService {
       
       // Reload environment variables
       Object.entries(config).forEach(([key, value]) => {
-        process.env[key] = value;
+        process.env[key] = this.normalizeEnvironmentValue(value);
       });
     } catch (error) {
       console.error('Error saving config:', error.message);
@@ -350,18 +418,44 @@ class SetupService {
     }
   }
 
+  hasRequiredConfiguration(config) {
+    if (!config || typeof config !== 'object') {
+      return false;
+    }
+
+    const paperlessApiUrl = String(config.PAPERLESS_API_URL || '').trim();
+    const aiProvider = String(config.AI_PROVIDER || '').trim().toLowerCase();
+    if (!paperlessApiUrl || !aiProvider) {
+      return false;
+    }
+
+    if (aiProvider === 'openai') {
+      return Boolean(String(config.OPENAI_API_KEY || '').trim());
+    }
+
+    if (aiProvider === 'ollama') {
+      return Boolean(String(config.OLLAMA_API_URL || '').trim()) && Boolean(String(config.OLLAMA_MODEL || '').trim());
+    }
+
+    if (aiProvider === 'azure') {
+      return Boolean(String(config.AZURE_ENDPOINT || '').trim())
+        && Boolean(String(config.AZURE_API_KEY || '').trim())
+        && Boolean(String(config.AZURE_DEPLOYMENT_NAME || '').trim());
+    }
+
+    if (aiProvider === 'custom') {
+      return Boolean(String(config.CUSTOM_BASE_URL || '').trim()) && Boolean(String(config.CUSTOM_MODEL || '').trim());
+    }
+
+    return false;
+  }
+
   async isConfigured() {
     if (this.configured !== null) {
       return this.configured;
     }
 
-    const maxAttempts = 60; // 5 minutes = 300 seconds, attempting every 5 seconds = 60 attempts
-    const delayBetweenAttempts = 5000; // 5 seconds in milliseconds
-    let attempts = 0;
-
-    // First check if .env exists and if PAPERLESS_API_URL is set
     try {
-      // Check if .env file exists
       try {
         await fs.access(this.envPath, fs.constants.F_OK);
       } catch (err) {
@@ -370,64 +464,20 @@ class SetupService {
         return false;
       }
 
-      // Load and check for PAPERLESS_API_URL
       const config = await this.loadConfig();
-      if (!config || !config.PAPERLESS_API_URL) {
-        console.log('PAPERLESS_API_URL not set. Starting setup process...');
+      if (!this.hasRequiredConfiguration(config)) {
+        console.log('Required configuration is incomplete. Starting setup process...');
         this.configured = false;
         return false;
       }
+
+      this.configured = true;
+      return true;
     } catch (error) {
       console.error('Error checking initial configuration:', error.message);
       this.configured = false;
       return false;
     }
-
-    const attemptConfiguration = async () => {
-      try {
-        // Check data directory and create if needed
-        const dataDir = path.dirname(this.envPath);
-        try {
-          await fs.access(dataDir, fs.constants.F_OK);
-        } catch (err) {
-          console.log('Creating data directory...');
-          await fs.mkdir(dataDir, { recursive: true });
-        }
-
-        // Load and validate full configuration
-        const config = await this.loadConfig();
-        if (!config) {
-          throw new Error('Failed to load configuration');
-        }
-
-        await this.validateConfig(config);
-        this.configured = true;
-        return true;
-      } catch (error) {
-        console.error('Configuration attempt failed:', error.message);
-        throw error;
-      }
-    };
-
-    // Only enter retry loop if we have PAPERLESS_API_URL set
-    while (attempts < maxAttempts) {
-      try {
-        const result = await attemptConfiguration();
-        return result;
-      } catch (error) {
-        attempts++;
-        if (attempts === maxAttempts) {
-          console.error('Max configuration attempts reached. Final error:', error.message);
-          this.configured = false;
-          return false;
-        }
-        console.log(`Retrying configuration (attempt ${attempts}/${maxAttempts}) in 5 seconds...`);
-        await new Promise(resolve => setTimeout(resolve, delayBetweenAttempts));
-      }
-    }
-
-    this.configured = false;
-    return false;
   }
 }
 

@@ -1286,6 +1286,7 @@ function initializeRuntimeOverridePills() {
         { selector: '#globalRateLimitWindowMs', envKey: 'GLOBAL_RATE_LIMIT_WINDOW_MS' },
         { selector: '#globalRateLimitMax', envKey: 'GLOBAL_RATE_LIMIT_MAX' },
         { selector: '#trustProxy', envKey: 'TRUST_PROXY' },
+        { selector: '#cookieSecureMode', envKey: 'COOKIE_SECURE_MODE' },
         { selector: '#minContentLength', envKey: 'MIN_CONTENT_LENGTH' },
         { selector: '#paperlessAiPort', envKey: 'PAPERLESS_AI_PORT' },
         { selector: '#externalApiAllowPrivateIps', envKey: 'EXTERNAL_API_ALLOW_PRIVATE_IPS' }
