@@ -1,0 +1,36 @@
+{
+  "presets": [
+    {
+      "id": "openai-default",
+      "label": "OpenAI",
+      "provider": "openai",
+      "apiUrl": "https://api.openai.com/v1",
+      "model": "gpt-4o-mini",
+      "tokenPlaceholder": "sk-..."
+    },
+    {
+      "id": "lmstudio-local",
+      "label": "LM Studio (OpenAI compatible)",
+      "provider": "custom",
+      "apiUrl": "http://127.0.0.1:1234/v1",
+      "model": "qwen2.5-7b-instruct",
+      "tokenPlaceholder": "lm-studio-token"
+    },
+    {
+      "id": "ollama-local",
+      "label": "Ollama",
+      "provider": "ollama",
+      "apiUrl": "http://localhost:11434",
+      "model": "llama3.2",
+      "tokenPlaceholder": ""
+    },
+    {
+      "id": "ionos-openai-compatible",
+      "label": "IONOS (OpenAI compatible)",
+      "provider": "custom",
+      "apiUrl": "https://openai.inference.de-txl.ionos.com/v1",
+      "model": "meta-llama/llama-3.3-70b-instruct",
+      "tokenPlaceholder": "ionos-api-key"
+    }
+  ]
+}

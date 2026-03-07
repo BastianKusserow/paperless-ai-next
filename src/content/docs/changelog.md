@@ -49,6 +49,7 @@ All improvements and fixes included in this fork, compared to [clusterzx/paperle
 | [NEXT-019](fixes/next-019-settings-tabs-env-editor/) | Reworked settings into System/AI/OCR/Troubleshooting tabs with runtime ENV hints and extended config coverage | 2026-03-01 |
 | [NEXT-020](fixes/next-020-paperless-public-url-discovery/) | Added public Paperless URL discovery plus optional `PAPERLESS_PUBLIC_URL` override for reliable external document links | 2026-03-01 |
 | [NEXT-021](fixes/next-021-chat-document-search/) | Document Chat now supports searchable document selection with API-backed filtering and faster initial page load | 2026-03-04 |
+| [NEXT-022](fixes/NEXT-022-setup-installer-rewrite/) | Rebuilt initial setup as a login-style multi-step installer with MFA onboarding, Paperless/AI test gates, metadata/tag selection, and docker-compose env preview | 2026-03-07 |
 
 ---
 

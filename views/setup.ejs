@@ -4,789 +4,322 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
-    <title>Paperless-ai Setup</title>
+    <title>Initial Setup - Paperless-AI next</title>
     <link rel="icon" type="image/webp" href="/favicon.webp">
     <script src="/vendor/tailwind/tailwindcss-3.4.16.js"></script>
     <link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-    <link rel="stylesheet" href="css/setup.css">
+    <link rel="stylesheet" href="/css/dashboard.css">
+    <link rel="stylesheet" href="/css/setup.css">
     <script src="/vendor/sweetalert2/sweetalert2.all.min.js"></script>
-    <script src="/vendor/popper/popper.min.js"></script>
-    <script src="/vendor/tippy/tippy-bundle.umd.min.js"></script>
-    <script src="/vendor/sortable/Sortable.min.js"></script>
-    <link rel="stylesheet" href="/vendor/shepherd/css/shepherd.css"/>
-    <script src="/vendor/shepherd/js/shepherd.min.js"></script>
 </head>
-<body class="h-full">
-    <button id="themeToggle" class="theme-toggle material-button-2">
-        <i class="fas fa-moon dark:fas fa-sun"></i>
+<body class="h-full bg-secondary setup-page">
+    <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme">
+        <i class="fas fa-moon"></i>
     </button>
 
-    <div class="min-h-full">
-        <nav class="modern-nav">
-            <div class="mx-auto max-w-7xl px-6 lg:px-8">
-                <div class="flex h-24 items-center justify-between">
-                    <div class="flex items-center space-x-6">
-                        <img src="/favicon.webp" alt="Paperless AI Logo" style="height: 60px;">
-                        <div>
-                            <h1 class="text-2xl font-bold">Paperless-AI next <small><%= config.PAPERLESS_AI_VERSION %></small></h1>
-                            <p class="text-sm text-secondary">Configuration Setup</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </nav>
-
-        <main class="py-10">
-            <div class="mx-auto max-w-3xl px-6 lg:px-8">
-                <!-- Progress Bar -->
-                <div class="mb-6">
-                    <div class="progress-bar">
-                        <div class="progress-bar-fill" style="width: 25%"></div>
-                    </div>
-                </div>
-
-                <!-- Main Form Card -->
-                <div class="material-card">
-                    <!-- Tab Navigation -->
-                    <div class="tab-navigation border-b border-gray-200 mb-6">
-                        <nav class="flex flex-wrap gap-2" role="tablist">
-                            <button type="button" 
-                                    class="tab-button active flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2" 
-                                    data-tab="user-tab">
-                                <i class="fas fa-user"></i>
-                                User Setup
-                            </button>
-                            <button type="button" 
-                                    class="tab-button flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2" 
-                                    data-tab="connection-tab">
-                                <i class="fas fa-link"></i>
-                                Connection
-                            </button>
-                            <button type="button" 
-                                    class="tab-button flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2" 
-                                    data-tab="ai-tab">
-                                <i class="fas fa-robot"></i>
-                                AI Settings
-                            </button>
-                            <button type="button" 
-                                    class="tab-button flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2" 
-                                    data-tab="advanced-tab">
-                                <i class="fas fa-cog"></i>
-                                Advanced
-                            </button>
-                        </nav>
-                    </div>
-
-                    <form id="setupForm" class="space-y-12">
-                        <!-- User Settings Tab -->
-                        <div id="user-tab" class="tab-content active">
-                            <section>
-                                <h2 class="section-title">
-                                    <i class="fas fa-user"></i>
-                                    User Settings
-                                </h2>
-                                <div class="space-y-6">
-                                    <!-- User settings content -->
-                                    <div class="form-group">
-                                        <label for="username">Username</label>
-                                        <input type="text" 
-                                               id="username" 
-                                               name="username"
-                                               class="modern-input"
-                                               required>
-                                    </div>
-                            
-                                    <div class="form-group">
-                                        <label for="password">Password</label>
-                                        <div class="password-input">
-                                            <input type="password" 
-                                                   id="password" 
-                                                   name="password"
-                                                   class="modern-input"
-                                                   required>
-                                            <button type="button" class="password-toggle" data-input="password">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                        <div id="password-strength" class="mt-2"></div>
-                                    </div>
-                            
-                                    <div class="form-group">
-                                        <label for="confirmPassword">Confirm Password</label>
-                                        <div class="password-input">
-                                            <input type="password" 
-                                                   id="confirmPassword" 
-                                                   name="confirmPassword"
-                                                   class="modern-input"
-                                                   required>
-                                            <button type="button" class="password-toggle" data-input="confirmPassword">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                        <div id="password-match" class="mt-2"></div>
-                                    </div>
-                                </div>
-                            </section>
-                        </div>
-
-                        <!-- Connection Settings Tab -->
-                        <div id="connection-tab" class="tab-content hidden">
-                            <section>
-                                <h2 class="section-title">
-                                    <i class="fas fa-link"></i>
-                                    Connection Settings
-                                </h2>
-                                <div class="space-y-6">
-                                    <!-- Connection settings content -->
-                                    <div class="form-group">
-                                        <label for="paperlessUrl" class="flex items-center gap-2">
-                                            Paperless-ngx API URL
-                                            <button type="button" 
-                                                    class="help-btn text-gray-400 hover:text-gray-600 focus:outline-none"
-                                                    id="urlHelp">
-                                                <i class="fas fa-circle-question"></i>
-                                            </button>
-                                        </label>
-                                        <input type="text" 
-                                               id="paperlessUrl" 
-                                               name="paperlessUrl"
-                                               value="<%= config.PAPERLESS_API_URL %>"
-                                               class="modern-input"
-                                               placeholder="http://your-paperless-instance:8000"
-                                               required>
-                                    </div>
-
-                                    <div class="form-group">
-                                        <label for="paperlessToken">API Token</label>
-                                        <div class="password-input">
-                                            <input type="password" 
-                                                   id="paperlessToken" 
-                                                   name="paperlessToken"
-                                                   value="<%= config.PAPERLESS_API_TOKEN %>"
-                                                   class="modern-input"
-                                                   required>
-                                            <button type="button" class="password-toggle" data-input="paperlessToken">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div class="form-group">
-                                        <label for="paperlessUsername">Paperless-ngx Username</label>
-                                        <input type="text" 
-                                               id="paperlessUsername" 
-                                               name="paperlessUsername"
-                                               value="<%= config.PAPERLESS_USERNAME %>"
-                                               class="modern-input"
-                                               required>
-                                    </div>
-                                </div>
-                            </section>
-                        </div>
-
-                        <!-- AI Settings Tab -->
-                        <div id="ai-tab" class="tab-content hidden">
-                            <section>
-                                <h2 class="section-title">
-                                    <i class="fas fa-robot"></i>
-                                    AI Configuration
-                                </h2>
-                                <div class="space-y-6">
-                                    <!-- AI Provider Selection -->
-                                    <div class="form-group">
-                                        <label for="aiProvider">AI Provider</label>
-                                        <select id="aiProvider" 
-                                                name="aiProvider"
-                                                class="modern-input">
-                                            <option value="openai" <%= config.AI_PROVIDER === 'openai' ? 'selected' : '' %>>
-                                                OpenAI (ChatGPT)
-                                            </option>
-                                            <option value="ollama" <%= config.AI_PROVIDER === 'ollama' ? 'selected' : '' %>>
-                                                Ollama (Local LLM)
-                                            </option>
-                                            <option value="custom" <%= config.AI_PROVIDER === 'custom' ? 'selected' : '' %>>
-                                                Custom
-                                            </option>
-                                            <option value="azure" <%= config.AI_PROVIDER === 'azure' ? 'selected' : '' %>>
-                                                Azure
-                                            </option>
-                                        </select>
-                                    </div>
-
-                                    <!-- OpenAI Settings -->
-                                    <div id="openaiSettings" class="provider-settings">
-                                        <div class="form-group">
-                                            <label for="openaiKey">OpenAI API Key</label>
-                                            <div class="password-input">
-                                                <input type="password" 
-                                                       id="openaiKey" 
-                                                       name="openaiKey"
-                                                       value="<%= config.OPENAI_API_KEY %>"
-                                                       class="modern-input">
-                                                <button type="button" class="password-toggle" data-input="openaiKey">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="form-group">
-                                            <label for="openaiModel">OpenAI Model</label>
-                                            <select id="openaiModel" 
-                                                    name="openaiModel"
-                                                    class="modern-input">
-                                                <option value="gpt-3.5-turbo-0125" <%= config.OPENAI_MODEL === 'gpt-3.5-turbo-0125' ? 'selected' : '' %>>GPT-3.5 Turbo</option>
-                                                <option value="gpt-4o" <%= config.OPENAI_MODEL === 'gpt-4o' ? 'selected' : '' %>>GPT-4o</option>
-                                                <option value="o3-mini" <%= config.OPENAI_MODEL === 'o3-mini' ? 'selected' : '' %>>o3-mini</option>
-                                                <option value="gpt-4o-mini" <%= config.OPENAI_MODEL === 'gpt-4o-mini' ? 'selected' : '' %>>GPT-4o-mini (Best value)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <!-- Ollama Settings -->
-                                    <div id="ollamaSettings" class="provider-settings">
-                                        <div class="form-group">
-                                            <label for="ollamaUrl">Ollama API URL</label>
-                                            <input type="text" 
-                                                   id="ollamaUrl" 
-                                                   name="ollamaUrl"
-                                                   value="<%= config.OLLAMA_API_URL %>"
-                                                   class="modern-input">
-                                        </div>
-                                        
-                                        <div class="form-group">
-                                            <label for="ollamaModel">Ollama Model</label>
-                                            <input type="text" 
-                                                   id="ollamaModel" 
-                                                   name="ollamaModel"
-                                                   value="<%= config.OLLAMA_MODEL %>"
-                                                   class="modern-input">
-                                        </div>
-                                    </div>
-
-                                    <!-- Custom Provider Settings -->
-                                    <div id="customSettings" class="provider-settings">
-                                        <div class="form-group">
-                                            <label for="customBaseUrl">Base URL</label>
-                                            <input type="text" 
-                                                   id="customBaseUrl" 
-                                                   name="customBaseUrl"
-                                                   value="<%= config.CUSTOM_BASE_URL %>"
-                                                   class="modern-input"
-                                                   placeholder="https://api.example.com">
-                                        </div>
-                                        
-                                        <div class="form-group">
-                                            <label for="customApiKey">API Key</label>
-                                            <div class="password-input">
-                                                <input type="password" 
-                                                       id="customApiKey" 
-                                                       name="customApiKey"
-                                                       value="<%= config.CUSTOM_API_KEY %>"
-                                                       class="modern-input">
-                                                <button type="button" class="password-toggle" data-input="customApiKey">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="form-group">
-                                            <label for="customModel">Model</label>
-                                            <input type="text" 
-                                                   id="customModel" 
-                                                   name="customModel"
-                                                   value="<%= config.CUSTOM_MODEL %>"
-                                                   class="modern-input"
-                                                   placeholder="Enter model name">
-                                        </div>
-                                    </div>
-
-                                    
-                                    <!-- Azure Settings -->
-                                    <div id="azureSettings" class="provider-settings">
-                                        <div class="form-group">
-                                            <label for="azureEndpoint">Endpoint</label>
-                                            <input type="text" 
-                                                   id="azureEndpoint" 
-                                                   name="azureEndpoint"
-                                                   value="<%= config.AZURE_ENDPOINT %>"
-                                                   class="modern-input"
-                                                   placeholder="https://api.example.com">
-                                        </div>
-                                        
-                                        <div class="form-group">
-                                            <label for="azureApiKey">API Key</label>
-                                            <div class="password-input">
-                                                <input type="password" 
-                                                       id="azureApiKey" 
-                                                       name="azureApiKey"
-                                                       value="<%= config.AZURE_API_KEY %>"
-                                                       class="modern-input">
-                                                <button type="button" class="password-toggle" data-input="azureApiKey">
-                                                    <i class="fas fa-eye"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        
-                                        <div class="form-group">
-                                            <label for="azureDeploymentName">Deployment</label>
-                                            <input type="text" 
-                                                   id="azureDeploymentName" 
-                                                   name="azureDeploymentName"
-                                                   value="<%= config.AZURE_DEPLOYMENT_NAME %>"
-                                                   class="modern-input"
-                                                   placeholder="Enter deployment name">
-                                        </div>
-
-                                        <div class="form-group">
-                                            <label for="azureApiVersion">API Version</label>
-                                            <input type="text" 
-                                                   id="azureApiVersion" 
-                                                   name="azureApiVersion"
-                                                   value="<%= config.AZURE_API_VERSION %>"
-                                                   class="modern-input"
-                                                   placeholder="Enter API version">
-                                        </div>
-                                    </div>
-
-                                    <div class="form-group">
-                                        <label for="tokenLimit">Token Limit</label>
-                                        <input type="number" 
-                                               id="tokenLimit" 
-                                               name="tokenLimit"
-                                               value="<%= config.TOKEN_LIMIT %>"
-                                               class="modern-input"
-                                               placeholder="Enter token limit of model">
-                                    </div>
-                        
-                                    <div class="form-group">
-                                        <label for="responseTokens">Response Tokens</label>
-                                        <input type="number" 
-                                               id="responseTokens" 
-                                               name="responseTokens"
-                                               value="<%= config.RESPONSE_TOKENS %>"
-                                               class="modern-input"
-                                               placeholder="Enter approximate token amount for the response">
-                                    </div>
-                                </div>
-                            </section>
-                        </div>
-
-                        <!-- Advanced Settings Tab -->
-                        <div id="advanced-tab" class="tab-content hidden">
-                            <section>
-                                <h2 class="section-title">
-                                    <i class="fas fa-cog"></i>
-                                    Advanced Settings
-                                </h2>
-                                <div class="space-y-6">
-                                    <!-- Basic Settings -->
-                                    <div class="form-group">
-                                        <label for="useExistingData">Use existing Correspondents and Tags?</label>
-                                        <select id="useExistingData" 
-                                                name="useExistingData" 
-                                                class="modern-input">
-                                                <option value="no" <%= config.USE_EXISTING_DATA === 'no' ? 'selected' : '' %>>No</option>
-                                                <option value="yes" <%= config.USE_EXISTING_DATA === 'yes' ? 'selected' : '' %>>Yes</option>
-                                            </select>
-                                        </div>
-    
-                                        <div class="form-group">
-                                            <label for="scanInterval">Scan Interval (Cron Format)</label>
-                                            <input type="text" 
-                                                   id="scanInterval" 
-                                                   name="scanInterval"
-                                                   value="<%= config.SCAN_INTERVAL %>"
-                                                   class="modern-input"
-                                                   required>
-                                            <p class="help-text">Default: every 30 minutes</p>
-                                        </div>
-    
-                                        <div class="form-group">
-                                            <label for="showTags">Process only specific pre tagged documents?</label>
-                                            <select id="showTags" 
-                                                    name="showTags" 
-                                                    class="modern-input">
-                                                <option value="no" <%= config.PROCESS_PREDEFINED_DOCUMENTS === 'no' ? 'selected' : '' %>>No</option>
-                                                <option value="yes" <%= config.PROCESS_PREDEFINED_DOCUMENTS === 'yes' ? 'selected' : '' %>>Yes</option>
-                                            </select>
-                                        </div>
-    
-                                        <!-- Tags Input -->
-                                        <div id="tagsInputSection" class="<%= config.PROCESS_PREDEFINED_DOCUMENTS === 'yes' ? '' : 'hidden' %>">
-                                            <div class="form-group">
-                                                <label for="tagInput">Tags</label>
-                                                <div class="tag-input-container">
-                                                    <input type="text" 
-                                                        id="tagInput" 
-                                                        class="modern-input"
-                                                        placeholder="Enter a tag and press Enter">
-                                                    <button type="button" 
-                                                            class="material-button add-tag-btn">
-                                                        <i class="fas fa-plus"></i>
-                                                        Add
-                                                    </button>
-                                                </div>
-                                                <div id="tagsContainer" class="tags-container">
-                                                    <% if (config.TAGS && Array.isArray(config.TAGS) && config.TAGS.length > 0) { %>
-                                                        <% config.TAGS.forEach(tag => { %>
-                                                            <div class="modern-tag fade-in">
-                                                                <span><%= tag %></span>
-                                                                <button type="button"><i class="fas fa-times"></i></button>
-                                                            </div>
-                                                        <% }); %>
-                                                    <% } %>
-                                                </div>
-                                                <input type="hidden" id="tags" name="tags" value="<%= Array.isArray(config.TAGS) ? config.TAGS.join(',') : '' %>">
-                                            </div>
-                                        </div>
-
-                                        <div class="form-group">
-                                            <label for="ignoreTagInput">Ignore Tags</label>
-                                            <div class="tag-input-container">
-                                                <input type="text"
-                                                    id="ignoreTagInput"
-                                                    class="modern-input"
-                                                    placeholder="Enter a tag to ignore and press Enter">
-                                                <button type="button"
-                                                        class="material-button add-ignore-tag-btn">
-                                                    <i class="fas fa-plus"></i>
-                                                    Add
-                                                </button>
-                                            </div>
-                                            <div id="ignoreTagsContainer" class="tags-container">
-                                                <% if (config.IGNORE_TAGS && Array.isArray(config.IGNORE_TAGS) && config.IGNORE_TAGS.length > 0) { %>
-                                                    <% config.IGNORE_TAGS.forEach(tag => { %>
-                                                        <div class="modern-tag fade-in">
-                                                            <span><%= tag %></span>
-                                                            <button type="button"><i class="fas fa-times"></i></button>
-                                                        </div>
-                                                    <% }); %>
-                                                <% } %>
-                                            </div>
-                                            <input type="hidden" id="ignoreTags" name="ignoreTags" value="<%= Array.isArray(config.IGNORE_TAGS) ? config.IGNORE_TAGS.join(',') : '' %>">
-                                            <p class="help-text">Documents with these tags are excluded from regular scans and dashboard totals.</p>
-                                        </div>
-                                        
-                                        <!-- AI Tag identification -->
-                                        <hr/>
-                                        <div class="form-group">
-                                            <label for="aiProcessedTag">Add AI-processed tag to documents?</label>
-                                            <select id="aiProcessedTag" 
-                                                    name="aiProcessedTag" 
-                                                    class="modern-input">
-                                                <option value="no" <%= config.ADD_AI_PROCESSED_TAG === 'no' ? 'selected' : '' %>>No</option>
-                                                <option value="yes" <%= config.ADD_AI_PROCESSED_TAG === 'yes' ? 'selected' : '' %>>Yes</option>
-                                            </select>
-                                        </div>
-    
-                                        <div id="aiTagNameSection" class="<%= config.ADD_AI_PROCESSED_TAG === 'yes' ? '' : 'hidden' %>">
-                                            <div class="form-group">
-                                                <label for="aiTagName">AI-processed Tag Name</label>
-                                                <input type="text" 
-                                                    id="aiTagName" 
-                                                    name="aiTagName"
-                                                    value="<%= config.AI_PROCESSED_TAG_NAME || 'ai-processed' %>"
-                                                    class="modern-input"
-                                                    placeholder="ai-processed">
-                                                <p class="help-text">This tag will be added to documents after AI processing</p>
-                                            </div>
-                                        </div>
-                                        
-                                        <hr/>
-                                        <div class="form-group">
-                                            <label for="usePromptTags">Use specific tags in prompt?</label>
-                                            <select id="usePromptTags" 
-                                                    name="usePromptTags" 
-                                                    class="modern-input">
-                                                <option value="no" <%= config.USE_PROMPT_TAGS === 'no' ? 'selected' : '' %>>No</option>
-                                                <option value="yes" <%= config.USE_PROMPT_TAGS === 'yes' ? 'selected' : '' %>>Yes</option>
-                                            </select>
-                                        </div>
-    
-                                        <div id="promptTagsSection" class="<%= config.USE_PROMPT_TAGS === 'yes' ? '' : 'hidden' %>">
-                                            <div class="form-group">
-                                                <label for="promptTagInput">Prompt Tags</label>
-                                                <div class="tag-input-container">
-                                                    <input type="text" 
-                                                        id="promptTagInput" 
-                                                        class="modern-input"
-                                                        placeholder="Enter a tag and press Enter">
-                                                    <button type="button" 
-                                                            class="material-button add-prompt-tag-btn">
-                                                        <i class="fas fa-plus"></i>
-                                                        Add
-                                                    </button>
-                                                </div>
-                                                <div id="promptTagsContainer" class="tags-container">
-                                                    <% if (config.PROMPT_TAGS && Array.isArray(config.PROMPT_TAGS) && config.PROMPT_TAGS.length > 0) { %>
-                                                        <% config.PROMPT_TAGS.forEach(tag => { %>
-                                                            <div class="modern-tag fade-in">
-                                                                <span><%= tag %></span>
-                                                                <button type="button"><i class="fas fa-times"></i></button>
-                                                            </div>
-                                                        <% }); %>
-                                                    <% } %>
-                                                </div>
-                                                <input type="hidden" id="promptTags" name="promptTags" value="<%= Array.isArray(config.PROMPT_TAGS) ? config.PROMPT_TAGS.join(',') : '' %>">
-                                                <p class="help-text">These tags will be exclusively used in the AI prompt</p>
-                                            </div>
-                                        </div>
-                                        <hr/>
-                                        <div class="form-group">
-                                            <label for="disableAutomaticProcessing">Disable automatic processing?</label>
-                                            <div class="modern-card flex-1 p-4 rounded-lg border border-gray-200 hover:border-blue-500 transition-colors duration-200">
-                                                <label class="flex items-start cursor-pointer w-full">
-                                                    <input type="checkbox" 
-                                                        id="disableAutomaticProcessing" 
-                                                        name="disableAutomaticProcessing" 
-                                                        class="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                                                        <%= config.DISABLE_AUTOMATIC_PROCESSING === 'yes' ? 'checked' : '' %>>
-                                                    <div class="ml-3">
-                                                        <div class="flex items-center font-medium">
-                                                            <i class="fas fa-tags text-blue-500 mr-2"></i>
-                                                            Disable Automatic Processing
-                                                        </div>
-                                                        <p class="text-sm text-gray-500 mt-1">Determines if the AI will run on its own or every scan is started manually</p>
-                                                    </div>
-                                                </label>
-                                            </div>
-                                        </div>
-                                        <hr/>
-                                        <!-- Limit Functions Section -->
-                                        <div class="form-group space-y-4">
-                                            <label class="flex items-center gap-2 font-medium">
-                                                <i class="fas fa-sliders-h text-blue-500"></i>
-                                                Enable/Disable AI Functions
-                                            </label>
-                                            <p class="text-sm text-gray-500">Select which functions the AI should perform during document analysis</p>
-                                            
-                                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                                                <div class="modern-card flex-1 p-4 rounded-lg border border-gray-200 hover:border-blue-500 transition-colors duration-200">
-                                                    <label class="flex items-start cursor-pointer w-full">
-                                                        <input type="checkbox" 
-                                                            id="activateTagging" 
-                                                            name="activateTagging" 
-                                                            class="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                                                            <%= config.ACTIVATE_TAGGING === 'yes' ? 'checked' : '' %>>
-                                                        <div class="ml-3">
-                                                            <div class="flex items-center font-medium">
-                                                                <i class="fas fa-tags text-blue-500 mr-2"></i>
-                                                                Tags Assignment
-                                                            </div>
-                                                            <p class="text-sm text-gray-500 mt-1">Automatically assign relevant tags to documents</p>
-                                                        </div>
-                                                    </label>
-                                                </div>
-                                                
-                                                <div class="modern-card flex-1 p-4 rounded-lg border border-gray-200 hover:border-blue-500 transition-colors duration-200">
-                                                    <label class="flex items-start cursor-pointer w-full">
-                                                        <input type="checkbox" 
-                                                            id="activateCorrespondents" 
-                                                            name="activateCorrespondents" 
-                                                            class="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                                                            <%= config.ACTIVATE_CORRESPONDENTS === 'yes' ? 'checked' : '' %>>
-                                                        <div class="ml-3">
-                                                            <div class="flex items-center font-medium">
-                                                                <i class="fas fa-user text-blue-500 mr-2"></i>
-                                                                Correspondent Detection
-                                                            </div>
-                                                            <p class="text-sm text-gray-500 mt-1">Identify document senders automatically</p>
-                                                        </div>
-                                                    </label>
-                                                </div>
-                                                
-                                                <div class="modern-card flex-1 p-4 rounded-lg border border-gray-200 hover:border-blue-500 transition-colors duration-200">
-                                                    <label class="flex items-start cursor-pointer w-full">
-                                                        <input type="checkbox" 
-                                                            id="activateDocumentType" 
-                                                            name="activateDocumentType" 
-                                                            class="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                                                            <%= config.ACTIVATE_DOCUMENT_TYPE === 'yes' ? 'checked' : '' %>>
-                                                        <div class="ml-3">
-                                                            <div class="flex items-center font-medium">
-                                                                <i class="fas fa-file-alt text-blue-500 mr-2"></i>
-                                                                Document Type Classification
-                                                            </div>
-                                                            <p class="text-sm text-gray-500 mt-1">Determine the type of document automatically</p>
-                                                        </div>
-                                                    </label>
-                                                </div>
-                                                
-                                                <div class="modern-card flex-1 p-4 rounded-lg border border-gray-200 hover:border-blue-500 transition-colors duration-200">
-                                                    <label class="flex items-start cursor-pointer w-full">
-                                                        <input type="checkbox" 
-                                                            id="activateTitle" 
-                                                            name="activateTitle" 
-                                                            class="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                                                            <%= config.ACTIVATE_TITLE === 'yes' ? 'checked' : '' %>>
-                                                        <div class="ml-3">
-                                                            <div class="flex items-center font-medium">
-                                                                <i class="fas fa-heading text-blue-500 mr-2"></i>
-                                                                Title Generation
-                                                            </div>
-                                                            <p class="text-sm text-gray-500 mt-1">Generate meaningful titles for documents</p>
-                                                        </div>
-                                                    </label>
-                                                </div>
-    
-                                                <div class="modern-card flex-1 p-4 rounded-lg border border-gray-200 hover:border-blue-500 transition-colors duration-200">
-                                                    <label class="flex items-start cursor-pointer w-full">
-                                                        <input type="checkbox" 
-                                                            id="activateCustomFields" 
-                                                            name="activateCustomFields" 
-                                                            class="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                                                            <%= config.ACTIVATE_CUSTOM_FIELDS === 'yes' ? 'checked' : '' %>>
-                                                        <div class="ml-3">
-                                                            <div class="flex items-center font-medium">
-                                                                <i class="fas fa-filter text-blue-500 mr-2"></i>
-                                                                Custom Fields
-                                                            </div>
-                                                            <p class="text-sm text-gray-500 mt-1">Add custom fields to the documents</p>
-                                                        </div>
-                                                    </label>
-                                                </div>
-                                            </div>
-                                        </div>
-    
-                                        <hr/>
-                                        <!-- Custom Fields Section -->
-                                        <section>
-                                            <div class="form-group space-y-4" id="customFieldsSection">
-                                                <label class="flex items-center gap-2 font-medium">
-                                                    <i class="fas fa-table text-blue-500"></i>
-                                                    Custom Fields Configuration
-                                                </label>
-                                                <p class="text-sm text-gray-500">Configure custom fields that will be populated by AI during document analysis.</p>
-                                                
-                                                <!-- Fields Container -->
-                                                <div id="customFieldsList" class="space-y-2">
-                                                    <% if (config.CUSTOM_FIELDS && Array.isArray(JSON.parse(config.CUSTOM_FIELDS).custom_fields)) { %>
-                                                        <% JSON.parse(config.CUSTOM_FIELDS).custom_fields.forEach((field, index) => { %>
-                                                            <div class="custom-field-item flex items-center gap-2 p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-200 transition-colors">
-                                                                <div class="cursor-move text-gray-400">
-                                                                    <i class="fas fa-grip-vertical"></i>
-                                                                </div>
-                                                                <div class="flex-1 flex items-center gap-4">
-                                                                    <div class="flex-1">
-                                                                        <p class="font-medium"><%= field.value %></p>
-                                                                        <p class="text-sm text-gray-500">
-                                                                            Type: <%= field.data_type %>
-                                                                            <% if (field.data_type === 'monetary' && field.currency) { %>
-                                                                                (<%= field.currency %>)
-                                                                            <% } %>
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                            <button type="button" 
-                                                                    onclick="removeCustomField(this)" 
-                                                                    class="text-gray-400 hover:text-red-500 transition-colors">
-                                                                <i class="fas fa-trash"></i>
-                                                            </button>
-                                                        </div>
-                                                    <% }); %>
-                                                <% } %>
-                                            </div>
-
-                                            <!-- Add New Field Form -->
-                                            <div class="grid grid-cols-12 gap-3 mt-4">
-                                                <div class="col-span-6">
-                                                    <input type="text" 
-                                                        id="newFieldName" 
-                                                        class="modern-input w-full" 
-                                                        placeholder="Enter field name...">
-                                                </div>
-                                                
-                                                <div class="col-span-2">
-                                                    <select id="newFieldType" class="modern-input w-full" onchange="toggleCurrencySelect()">
-                                                        <option value="string">Text</option>
-                                                        <option value="float">Number</option>
-                                                        <option value="integer">Integer</option>
-                                                        <option value="monetary">Currency</option>
-                                                        <option value="date">Date</option>
-                                                        <option value="boolean">Boolean</option>
-                                                    </select>
-                                                </div>
-
-                                                <div class="col-span-2">
-                                                    <select id="currencyCode" class="modern-input w-full" style="display: none;">
-                                                        <option value="EUR">EUR</option>
-                                                        <option value="USD">USD</option>
-                                                        <option value="GBP">GBP</option>
-                                                        <option value="JPY">JPY</option>
-                                                        <option value="CHF">CHF</option>
-                                                        <option value="AUD">AUD</option>
-                                                        <option value="CAD">CAD</option>
-                                                        <option value="CNY">CNY</option>
-                                                        <option value="INR">INR</option>
-                                                        <option value="NZD">NZD</option>
-                                                    </select>
-                                                </div>
-
-                                                <div class="col-span-2">
-                                                    <button type="button" 
-                                                            onclick="addCustomField()" 
-                                                            class="material-button w-full flex items-center justify-center gap-2"
-                                                            id="addFieldBtn">
-                                                        <i class="fas fa-plus"></i>
-                                                        Add
-                                                    </button>
-                                                </div>
-                                            </div>
-
-                                            <!-- Hidden input for form submission -->
-                                            <input type="hidden" 
-                                                id="customFieldsJson" 
-                                                name="customFields" 
-                                                value="<%= config.CUSTOM_FIELDS || '{"custom_fields":[]}' %>">
-                                        </div>
-                                    </section>
-
-                                    <hr/>
-                                    <!-- System Prompt -->
-                                    <div class="form-group">
-                                        <label for="systemPrompt">Prompt Description</label>
-                                        <div class="prompt-container">
-                                            <textarea id="systemPrompt" 
-                                                     name="systemPrompt"
-                                                     rows="8"
-                                                     class="modern-input"
-                                                     placeholder="Describe how the AI should analyze your documents..."><%= config.SYSTEM_PROMPT %></textarea>
-                                            <button id="systemPromptBtn" type="button" 
-                                                    class="material-button example-btn">
-                                                <i class="fas fa-lightbulb"></i>
-                                                Example
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </section>
-                        </div>
-
-                        <!-- Navigation Buttons -->
-                        <div class="flex justify-between pt-6">
-                            <button type="button" id="prevBtn" class="material-button" style="display: none;">
-                                <i class="fas fa-arrow-left"></i>
-                                Previous
-                            </button>
-                            <button type="button" id="nextBtn" class="material-button">
-                                Next
-                                <i class="fas fa-arrow-right"></i>
-                            </button>
-                            <button type="submit" id="submitBtn" class="material-button submit-btn" style="display: none;">
-                                <i class="fas fa-save"></i>
-                                Save Configuration
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </main>
+    <div class="setup-background" aria-hidden="true">
+        <div class="setup-glow setup-glow-a"></div>
+        <div class="setup-glow setup-glow-b"></div>
+        <div class="setup-grid"></div>
     </div>
 
-    <!-- Scripts -->
-    <script src="js/setup.js"></script>
-    
-    <%- include('partials/scripts/setup-scripts') %>
+    <main class="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 py-8">
+        <section class="material-card setup-card w-full max-w-4xl" aria-labelledby="setupTitle">
+            <header class="text-center mb-8">
+                <div class="flex flex-col items-center justify-center gap-3 mb-4">
+                    <img src="/favicon.webp" class="no-invert" alt="Paperless AI next Logo" style="height: 60px;">
+                    <h1 id="setupTitle" class="brand-title text-2xl">Paperless-AI<span class="text-sm font-semibold text-blue-700"> next</span></h1>
+                </div>
+                <h2 class="text-2xl font-bold">Initial Installer</h2>
+                <p class="setup-subtitle">Complete each step to configure your instance. All settings are shown in English.</p>
+                <% if (typeof success === 'string' && success) { %>
+                    <p class="setup-notice setup-notice-success mt-4"><%= success %></p>
+                <% } %>
+                <% if (typeof error === 'string' && error) { %>
+                    <p class="setup-notice setup-notice-error mt-4"><%= error %></p>
+                <% } %>
+            </header>
+
+            <div class="setup-progress-wrap mb-6">
+                <div class="setup-progress-bar">
+                    <div id="setupProgressFill" class="setup-progress-fill" style="width: 14.2857%;"></div>
+                </div>
+                <div id="setupStepLabel" class="setup-step-label mt-2">Step 1 of 7: Admin account</div>
+            </div>
+
+            <form id="setupWizardForm" class="space-y-6" novalidate>
+                <section class="setup-step is-active" data-step-index="0" data-step-title="Admin account">
+                    <h3 class="setup-section-title"><i class="fas fa-user-shield"></i> Admin account</h3>
+                    <p class="setup-section-help">Create the initial Paperless-AI next administrator account.</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div class="space-y-2">
+                            <label for="adminUsername" class="text-sm font-medium">Username</label>
+                            <input id="adminUsername" name="adminUsername" type="text" class="setup-input" required autocomplete="username">
+                        </div>
+                        <div class="space-y-2">
+                            <label for="adminPassword" class="text-sm font-medium">Password</label>
+                            <input id="adminPassword" name="adminPassword" type="password" class="setup-input" required autocomplete="new-password" minlength="8">
+                        </div>
+                    </div>
+
+                    <div class="space-y-2 mt-4">
+                        <label for="confirmPassword" class="text-sm font-medium">Confirm password</label>
+                        <input id="confirmPassword" name="confirmPassword" type="password" class="setup-input" required autocomplete="new-password" minlength="8">
+                        <p id="passwordHint" class="setup-hint">Use at least 8 characters.</p>
+                    </div>
+                </section>
+
+                <section class="setup-step" data-step-index="1" data-step-title="MFA setup">
+                    <h3 class="setup-section-title"><i class="fas fa-shield-halved"></i> Multi-factor authentication (MFA)</h3>
+                    <p class="setup-section-help">Would you like to enable MFA for the admin account?</p>
+
+                    <div class="space-y-2 mt-4">
+                        <label for="enableMfa" class="text-sm font-medium">Enable MFA</label>
+                        <select id="enableMfa" name="enableMfa" class="setup-input">
+                            <option value="no">No</option>
+                            <option value="yes">Yes</option>
+                        </select>
+                    </div>
+
+                    <div id="mfaSetupPanel" class="setup-panel hidden mt-4 space-y-4">
+                        <button type="button" id="startMfaSetupBtn" class="setup-btn setup-btn-secondary">
+                            <i class="fas fa-qrcode"></i>
+                            Generate QR code
+                        </button>
+
+                        <div id="mfaProvisioningBox" class="setup-provisioning hidden">
+                            <div class="flex flex-col md:flex-row gap-4">
+                                <div class="setup-qr-box">
+                                    <img id="setupMfaQrImage" class="w-44 h-44 rounded border border-gray-200 bg-white p-2 hidden" alt="MFA setup QR code">
+                                </div>
+                                <div class="flex-1 space-y-3">
+                                    <div class="space-y-2">
+                                        <label for="setupMfaSecret" class="text-sm font-medium">Secret key</label>
+                                        <input id="setupMfaSecret" type="text" class="setup-input" readonly>
+                                    </div>
+                                    <div class="space-y-2">
+                                        <label for="setupMfaCode" class="text-sm font-medium">Authenticator code</label>
+                                        <div class="flex gap-2">
+                                            <input id="setupMfaCode" type="text" inputmode="numeric" autocomplete="one-time-code" class="setup-input flex-1" placeholder="Enter 6-digit code">
+                                            <button type="button" id="confirmMfaCodeBtn" class="setup-btn setup-btn-secondary">Confirm</button>
+                                        </div>
+                                        <p id="mfaStatusHint" class="setup-hint"></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="setup-step" data-step-index="2" data-step-title="Paperless connection">
+                    <h3 class="setup-section-title"><i class="fas fa-link"></i> Paperless-ngx connection</h3>
+                    <p class="setup-section-help">Enter your Paperless-ngx API credentials and run a connectivity test.</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div class="space-y-2 md:col-span-2">
+                            <label for="paperlessUrl" class="text-sm font-medium">Paperless-ngx API URL</label>
+                            <input id="paperlessUrl" name="paperlessUrl" type="text" class="setup-input" placeholder="http://your-paperless-instance:8000" required value="<%= config.PAPERLESS_API_URL || '' %>">
+                        </div>
+                        <div class="space-y-2">
+                            <label for="paperlessUsername" class="text-sm font-medium">Paperless username</label>
+                            <input id="paperlessUsername" name="paperlessUsername" type="text" class="setup-input" required value="<%= config.PAPERLESS_USERNAME || '' %>">
+                        </div>
+                        <div class="space-y-2">
+                            <label for="paperlessToken" class="text-sm font-medium">API token</label>
+                            <input id="paperlessToken" name="paperlessToken" type="password" class="setup-input" required value="<%= config.PAPERLESS_API_TOKEN || '' %>">
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                        <button type="button" id="testPaperlessBtn" class="setup-btn setup-btn-secondary">
+                            <i class="fas fa-plug-circle-check"></i>
+                            Test Paperless connection
+                        </button>
+                        <span id="paperlessTestState" class="setup-pill">Not tested</span>
+                    </div>
+                </section>
+
+                <section class="setup-step" data-step-index="3" data-step-title="Paperless metadata">
+                    <h3 class="setup-section-title"><i class="fas fa-database"></i> Paperless metadata</h3>
+                    <p class="setup-section-help">Load document statistics and choose tagging rules.</p>
+
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                        <button type="button" id="fetchMetadataBtn" class="setup-btn setup-btn-secondary">
+                            <i class="fas fa-arrows-rotate"></i>
+                            Load metadata from Paperless
+                        </button>
+                        <span id="metadataLoadState" class="setup-pill">Not loaded</span>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+                        <article class="setup-stat-card">
+                            <p class="setup-stat-label">Documents</p>
+                            <p id="documentsCount" class="setup-stat-value">-</p>
+                        </article>
+                        <article class="setup-stat-card">
+                            <p class="setup-stat-label">Correspondents</p>
+                            <p id="correspondentsCount" class="setup-stat-value">-</p>
+                        </article>
+                        <article class="setup-stat-card">
+                            <p class="setup-stat-label">Tags</p>
+                            <p id="tagsCount" class="setup-stat-value">-</p>
+                        </article>
+                    </div>
+
+                    <div class="space-y-4 mt-5">
+                        <label class="flex items-start gap-3">
+                            <input id="scanAllDocuments" type="checkbox" class="mt-1">
+                            <span>
+                                <strong>Always scan all documents</strong>
+                                <span class="block setup-hint">If enabled, no include-tag filter is used.</span>
+                            </span>
+                        </label>
+
+                        <div class="space-y-2">
+                            <label for="includeTag" class="text-sm font-medium">Tag used to select documents for processing</label>
+                            <input id="includeTag" type="text" class="setup-input" list="paperlessTagsDatalist" placeholder="Select or type a tag">
+                        </div>
+
+                        <div class="space-y-2">
+                            <label for="excludeTagInput" class="text-sm font-medium">Excluded tags</label>
+                            <div class="flex gap-2">
+                                <input id="excludeTagInput" type="text" class="setup-input flex-1" list="paperlessTagsDatalist" placeholder="Select a tag to exclude">
+                                <button type="button" id="addExcludeTagBtn" class="setup-btn setup-btn-secondary">Add</button>
+                            </div>
+                            <div id="excludeTagsContainer" class="setup-chip-container"></div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label for="processedTag" class="text-sm font-medium">Tag applied after Paperless-AI finishes</label>
+                            <div class="flex gap-2">
+                                <input id="processedTag" type="text" class="setup-input flex-1" list="paperlessTagsDatalist" placeholder="e.g. ai-processed" value="<%= config.AI_PROCESSED_TAG_NAME || 'ai-processed' %>">
+                                <button type="button" id="excludeProcessedTagBtn" class="setup-btn setup-btn-secondary">Exclude this tag</button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div class="space-y-2">
+                                <label for="automaticScanEnabled" class="text-sm font-medium">Automatic scanning</label>
+                                <select id="automaticScanEnabled" class="setup-input">
+                                    <option value="yes" <%= config.DISABLE_AUTOMATIC_PROCESSING === 'yes' ? '' : 'selected' %>>Yes</option>
+                                    <option value="no" <%= config.DISABLE_AUTOMATIC_PROCESSING === 'yes' ? 'selected' : '' %>>No</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label for="scanInterval" class="text-sm font-medium">Scan interval (cron)</label>
+                                <input id="scanInterval" type="text" class="setup-input" value="<%= config.SCAN_INTERVAL || (defaults && defaults.scanInterval) || '*/30 * * * *' %>">
+                            </div>
+                        </div>
+                    </div>
+
+                    <datalist id="paperlessTagsDatalist"></datalist>
+                </section>
+
+                <section class="setup-step" data-step-index="4" data-step-title="AI credentials">
+                    <h3 class="setup-section-title"><i class="fas fa-robot"></i> AI access credentials</h3>
+                    <p class="setup-section-help">Select a predefined provider preset and test credentials.</p>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div class="space-y-2 md:col-span-2">
+                            <label for="aiPreset" class="text-sm font-medium">Provider preset</label>
+                            <select id="aiPreset" class="setup-input"></select>
+                            <p id="aiPresetHint" class="setup-hint"></p>
+                        </div>
+                        <div class="space-y-2">
+                            <label for="aiProvider" class="text-sm font-medium">Provider type</label>
+                            <input id="aiProvider" class="setup-input" readonly>
+                        </div>
+                        <div class="space-y-2">
+                            <label for="aiModel" class="text-sm font-medium">Model</label>
+                            <input id="aiModel" type="text" class="setup-input" required>
+                        </div>
+                        <div class="space-y-2 md:col-span-2">
+                            <label for="aiApiUrl" class="text-sm font-medium">API URL</label>
+                            <input id="aiApiUrl" type="text" class="setup-input" required>
+                        </div>
+                        <div class="space-y-2 md:col-span-2">
+                            <label for="aiToken" class="text-sm font-medium">API token</label>
+                            <input id="aiToken" type="password" class="setup-input" placeholder="Enter token if required">
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                        <button type="button" id="testAiBtn" class="setup-btn setup-btn-secondary">
+                            <i class="fas fa-flask"></i>
+                            Test AI connection
+                        </button>
+                        <span id="aiTestState" class="setup-pill">Not tested</span>
+                    </div>
+                </section>
+
+                <section class="setup-step" data-step-index="5" data-step-title="Mistral OCR">
+                    <h3 class="setup-section-title"><i class="fas fa-file-lines"></i> Mistral OCR fallback</h3>
+                    <p class="setup-section-help">Configure OCR fallback for documents where AI extraction needs OCR assistance.</p>
+
+                    <div class="space-y-2 mt-4">
+                        <label for="mistralOcrEnabled" class="text-sm font-medium">Enable OCR fallback</label>
+                        <select id="mistralOcrEnabled" class="setup-input">
+                            <option value="no" <%= config.MISTRAL_OCR_ENABLED === 'yes' ? '' : 'selected' %>>No</option>
+                            <option value="yes" <%= config.MISTRAL_OCR_ENABLED === 'yes' ? 'selected' : '' %>>Yes</option>
+                        </select>
+                    </div>
+
+                    <div id="mistralFields" class="hidden space-y-4 mt-4">
+                        <div class="space-y-2">
+                            <label for="mistralApiKey" class="text-sm font-medium">Mistral API key</label>
+                            <input id="mistralApiKey" type="password" class="setup-input" placeholder="Enter Mistral API key">
+                        </div>
+                        <div class="space-y-2">
+                            <label for="mistralOcrModel" class="text-sm font-medium">Mistral OCR model</label>
+                            <input id="mistralOcrModel" type="text" class="setup-input" value="<%= config.MISTRAL_OCR_MODEL || 'mistral-ocr-latest' %>">
+                        </div>
+                    </div>
+                </section>
+
+                <section class="setup-step" data-step-index="6" data-step-title="Review and finish">
+                    <h3 class="setup-section-title"><i class="fas fa-clipboard-check"></i> Review and finish</h3>
+                    <p class="setup-section-help">Review generated environment keys, copy if needed, then finalize setup.</p>
+
+                    <div class="space-y-2 mt-4">
+                        <label for="envPreview" class="text-sm font-medium">For docker compose copy</label>
+                        <textarea id="envPreview" class="setup-input setup-textarea" rows="12" readonly></textarea>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3 mt-4">
+                        <button type="button" id="copyEnvPreviewBtn" class="setup-btn setup-btn-secondary">
+                            <i class="fas fa-copy"></i>
+                            Copy to clipboard
+                        </button>
+                        <button type="button" id="finalizeSetupBtn" class="setup-btn setup-btn-primary">
+                            <i class="fas fa-check"></i>
+                            Save and restart container
+                        </button>
+                    </div>
+                </section>
+
+                <footer class="setup-footer pt-4">
+                    <button type="button" id="prevStepBtn" class="setup-btn setup-btn-secondary" disabled>
+                        <i class="fas fa-arrow-left"></i>
+                        Previous
+                    </button>
+                    <button type="button" id="nextStepBtn" class="setup-btn setup-btn-primary">
+                        Next
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </footer>
+            </form>
+        </section>
+    </main>
+
+    <script>
+        window.__SETUP_BOOTSTRAP__ = <%- JSON.stringify({
+            config: config || {},
+            defaults: defaults || {},
+            aiProviderPresets: Array.isArray(aiProviderPresets) ? aiProviderPresets : []
+        }).replace(/</g, '\\u003c') %>;
+    </script>
+    <%- include('partials/scripts/login-scripts') %>
+    <script src="/js/setup.js" defer></script>
 </body>
 </html>

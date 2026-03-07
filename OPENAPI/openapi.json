@@ -1101,6 +1101,9 @@
           }
         },
         "responses": {
+          "200": {
+            "description": "Login page rendered again for invalid credentials, pending MFA verification, or invalid MFA code"
+          },
           "302": {
             "description": "Authentication successful and redirected to dashboard",
             "headers": {
@@ -1111,9 +1114,6 @@
                 }
               }
             }
-          },
-          "200": {
-            "description": "Login page rendered again for invalid credentials, pending MFA verification, or invalid MFA code"
           },
           "429": {
             "description": "Too many login attempts; login temporarily rate-limited"
@@ -1533,59 +1533,8 @@
             "schema": {
               "type": "string"
             },
-            "description": "General quick-search term across title, id, correspondent, and date",
+            "description": "Search term for title, id, correspondent, and Paperless full-text query",
             "example": "invoice"
-          },
-          {
-            "in": "query",
-            "name": "title",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Title filter (contains match)",
-            "example": "invoice"
-          },
-          {
-            "in": "query",
-            "name": "date",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "format": "date"
-            },
-            "description": "Date filter in YYYY-MM-DD format",
-            "example": "2026-03-04"
-          },
-          {
-            "in": "query",
-            "name": "id",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Document ID filter (digits)",
-            "example": "42"
-          },
-          {
-            "in": "query",
-            "name": "correspondent",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Correspondent name filter (contains match)",
-            "example": "acme"
-          },
-          {
-            "in": "query",
-            "name": "correspondentId",
-            "required": false,
-            "schema": {
-              "type": "integer"
-            },
-            "description": "Correspondent ID filter (exact match)",
-            "example": 9
           },
           {
             "in": "query",
@@ -1619,36 +1568,6 @@
                           "type": "string",
                           "example": "invoice"
                         },
-                        "filters": {
-                          "type": "object",
-                          "properties": {
-                            "q": {
-                              "type": "string",
-                              "example": "invoice"
-                            },
-                            "title": {
-                              "type": "string",
-                              "example": "invoice"
-                            },
-                            "date": {
-                              "type": "string",
-                              "example": "2026-03-04"
-                            },
-                            "id": {
-                              "type": "string",
-                              "example": "42"
-                            },
-                            "correspondent": {
-                              "type": "string",
-                              "example": "acme"
-                            },
-                            "correspondentId": {
-                              "type": "integer",
-                              "nullable": true,
-                              "example": 9
-                            }
-                          }
-                        },
                         "limit": {
                           "type": "integer",
                           "example": 25
@@ -1679,129 +1598,6 @@
                                 "type": "string",
                                 "nullable": true,
                                 "example": "2026-03-04"
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized - authentication required",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Too many requests",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/chat/correspondents": {
-      "get": {
-        "summary": "Search correspondents for chat filters",
-        "description": "Returns correspondents for the chat omnibox correspondent filter stage.\nThe endpoint is intended for selecting a correspondent first, then loading matching documents.\n",
-        "tags": [
-          "Chat",
-          "API"
-        ],
-        "security": [
-          {
-            "BearerAuth": []
-          },
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "query",
-            "name": "q",
-            "required": false,
-            "schema": {
-              "type": "string"
-            },
-            "description": "Partial correspondent name",
-            "example": "acme"
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100,
-              "default": 25
-            },
-            "description": "Maximum number of results to return"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Correspondents loaded successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "data": {
-                      "type": "object",
-                      "properties": {
-                        "query": {
-                          "type": "string",
-                          "example": "acme"
-                        },
-                        "limit": {
-                          "type": "integer",
-                          "example": 25
-                        },
-                        "correspondents": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "properties": {
-                              "id": {
-                                "type": "integer",
-                                "example": 9
-                              },
-                              "name": {
-                                "type": "string",
-                                "example": "ACME GmbH"
-                              },
-                              "document_count": {
-                                "type": "integer",
-                                "example": 42
                               }
                             }
                           }
@@ -3468,6 +3264,97 @@
         }
       }
     },
+    "/api/setup/presets": {
+      "get": {
+        "summary": "Get AI provider presets for initial setup",
+        "tags": [
+          "Setup"
+        ],
+        "responses": {
+          "200": {
+            "description": "Preset list loaded successfully"
+          }
+        }
+      }
+    },
+    "/api/setup/mfa/setup": {
+      "post": {
+        "summary": "Start setup MFA provisioning",
+        "tags": [
+          "Setup"
+        ],
+        "responses": {
+          "200": {
+            "description": "MFA provisioning data generated"
+          }
+        }
+      }
+    },
+    "/api/setup/mfa/confirm": {
+      "post": {
+        "summary": "Confirm setup MFA code",
+        "tags": [
+          "Setup"
+        ],
+        "responses": {
+          "200": {
+            "description": "MFA code validated"
+          }
+        }
+      }
+    },
+    "/api/setup/paperless/test": {
+      "post": {
+        "summary": "Test Paperless-ngx connectivity and permissions during setup",
+        "tags": [
+          "Setup"
+        ],
+        "responses": {
+          "200": {
+            "description": "Connectivity result returned"
+          }
+        }
+      }
+    },
+    "/api/setup/paperless/metadata": {
+      "post": {
+        "summary": "Fetch Paperless-ngx counts and tags for setup wizard",
+        "tags": [
+          "Setup"
+        ],
+        "responses": {
+          "200": {
+            "description": "Metadata loaded successfully"
+          }
+        }
+      }
+    },
+    "/api/setup/ai/test": {
+      "post": {
+        "summary": "Test AI provider credentials during setup",
+        "tags": [
+          "Setup"
+        ],
+        "responses": {
+          "200": {
+            "description": "AI connectivity result returned"
+          }
+        }
+      }
+    },
+    "/api/setup/complete": {
+      "post": {
+        "summary": "Finalize initial setup, persist env config, and trigger restart",
+        "tags": [
+          "Setup"
+        ],
+        "responses": {
+          "200": {
+            "description": "Setup completed successfully"
+          }
+        }
+      }
+    },
     "/manual/preview/{id}": {
       "get": {
         "summary": "Document preview",
@@ -4400,50 +4287,6 @@
         }
       }
     },
-    "/api/settings/paperless-public-url": {
-      "get": {
-        "summary": "Detect Paperless public URL",
-        "description": "Detects and returns the public base URL used for document links.",
-        "tags": [
-          "Settings",
-          "API"
-        ],
-        "security": [
-          {
-            "BearerAuth": []
-          },
-          {
-            "ApiKeyAuth": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Public URL resolved",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean"
-                    },
-                    "publicUrl": {
-                      "type": "string"
-                    },
-                    "source": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Server error"
-          }
-        }
-      }
-    },
     "/api/settings/mfa/status": {
       "get": {
         "summary": "Get MFA status for current user",
@@ -4597,6 +4440,50 @@
           },
           "404": {
             "description": "User not found"
+          },
+          "500": {
+            "description": "Server error"
+          }
+        }
+      }
+    },
+    "/api/settings/paperless-public-url": {
+      "get": {
+        "summary": "Detect Paperless public URL",
+        "description": "Detects and returns the public base URL used for document links.",
+        "tags": [
+          "Settings",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public URL resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "publicUrl": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "500": {
             "description": "Server error"

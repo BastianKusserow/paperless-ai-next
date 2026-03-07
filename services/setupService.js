@@ -303,10 +303,12 @@ class SetupService {
     return true;
   }
 
-  async saveConfig(config) {
+  async saveConfig(config, options = {}) {
     try {
-      // Validate the new configuration before saving
-      await this.validateConfig(config);
+      // Validate the new configuration before saving unless explicitly skipped
+      if (!options.skipValidation) {
+        await this.validateConfig(config);
+      }
 
       const JSON_STANDARD_PROMPT = `
         Return the result EXCLUSIVELY as a JSON object. The Tags and Title MUST be in the language that is used in the document.:

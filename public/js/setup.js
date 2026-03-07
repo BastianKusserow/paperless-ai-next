@@ -1,991 +1,881 @@
-class ThemeManager {
+class SetupWizard {
     constructor() {
-        this.themeToggle = document.getElementById('themeToggle');
+        this.bootstrap = window.__SETUP_BOOTSTRAP__ || {};
+        this.config = this.bootstrap.config || {};
+        this.defaults = this.bootstrap.defaults || {};
+        this.presets = Array.isArray(this.bootstrap.aiProviderPresets) ? this.bootstrap.aiProviderPresets : [];
+
+        this.steps = Array.from(document.querySelectorAll('.setup-step'));
+        this.stepLabel = document.getElementById('setupStepLabel');
+        this.progressFill = document.getElementById('setupProgressFill');
+        this.prevBtn = document.getElementById('prevStepBtn');
+        this.nextBtn = document.getElementById('nextStepBtn');
+
+        this.currentStep = 0;
+        this.excludeTags = [];
+
+        this.mfaState = {
+            challengeId: '',
+            verified: false,
+            setupStarted: false
+        };
+
+        this.paperlessTestState = {
+            ran: false,
+            success: false,
+            allowFailure: false
+        };
+
+        this.aiTestState = {
+            ran: false,
+            success: false,
+            allowFailure: false
+        };
+
+        this.metadataState = {
+            loaded: false,
+            tagNames: []
+        };
+
+        this.bindElements();
         this.initialize();
     }
 
-    initialize() {
-        // Load saved theme or default to light
-        const savedTheme = localStorage.getItem('theme') || 'light';
-        this.setTheme(savedTheme);
-        
-        // Add event listener for theme toggle
-        this.themeToggle.addEventListener('click', () => this.toggleTheme());
-    }
+    bindElements() {
+        this.form = document.getElementById('setupWizardForm');
 
-    setTheme(theme) {
-        document.documentElement.setAttribute('data-theme', theme);
-        localStorage.setItem('theme', theme);
-        
-        // Update toggle button icon
-        const icon = this.themeToggle.querySelector('i');
-        icon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
-        
-        // Update any active Shepherd tour
-        this.updateShepherdTheme(theme);
-    }
+        this.adminUsername = document.getElementById('adminUsername');
+        this.adminPassword = document.getElementById('adminPassword');
+        this.confirmPassword = document.getElementById('confirmPassword');
+        this.passwordHint = document.getElementById('passwordHint');
 
-    updateShepherdTheme(theme) {
-        const activeTooltips = document.querySelectorAll('.shepherd-element');
-        activeTooltips.forEach(tooltip => {
-            tooltip.style.background = getComputedStyle(document.documentElement)
-                .getPropertyValue('--shepherd-bg');
-        });
-    }
+        this.enableMfa = document.getElementById('enableMfa');
+        this.mfaSetupPanel = document.getElementById('mfaSetupPanel');
+        this.startMfaSetupBtn = document.getElementById('startMfaSetupBtn');
+        this.mfaProvisioningBox = document.getElementById('mfaProvisioningBox');
+        this.setupMfaQrImage = document.getElementById('setupMfaQrImage');
+        this.setupMfaSecret = document.getElementById('setupMfaSecret');
+        this.setupMfaCode = document.getElementById('setupMfaCode');
+        this.confirmMfaCodeBtn = document.getElementById('confirmMfaCodeBtn');
+        this.mfaStatusHint = document.getElementById('mfaStatusHint');
 
-    toggleTheme() {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-        this.setTheme(newTheme);
-    }
-}
+        this.paperlessUrl = document.getElementById('paperlessUrl');
+        this.paperlessUsername = document.getElementById('paperlessUsername');
+        this.paperlessToken = document.getElementById('paperlessToken');
+        this.testPaperlessBtn = document.getElementById('testPaperlessBtn');
+        this.paperlessTestStatePill = document.getElementById('paperlessTestState');
 
-class FormManager {
-    constructor() {
-        this.form = document.getElementById('setupForm');
+        this.fetchMetadataBtn = document.getElementById('fetchMetadataBtn');
+        this.metadataLoadStatePill = document.getElementById('metadataLoadState');
+        this.documentsCount = document.getElementById('documentsCount');
+        this.correspondentsCount = document.getElementById('correspondentsCount');
+        this.tagsCount = document.getElementById('tagsCount');
+        this.scanAllDocuments = document.getElementById('scanAllDocuments');
+        this.includeTag = document.getElementById('includeTag');
+        this.excludeTagInput = document.getElementById('excludeTagInput');
+        this.addExcludeTagBtn = document.getElementById('addExcludeTagBtn');
+        this.excludeTagsContainer = document.getElementById('excludeTagsContainer');
+        this.processedTag = document.getElementById('processedTag');
+        this.excludeProcessedTagBtn = document.getElementById('excludeProcessedTagBtn');
+        this.automaticScanEnabled = document.getElementById('automaticScanEnabled');
+        this.scanInterval = document.getElementById('scanInterval');
+        this.paperlessTagsDatalist = document.getElementById('paperlessTagsDatalist');
+
+        this.aiPreset = document.getElementById('aiPreset');
+        this.aiPresetHint = document.getElementById('aiPresetHint');
         this.aiProvider = document.getElementById('aiProvider');
-        this.showTags = document.getElementById('showTags');
-        this.aiProcessedTag = document.getElementById('aiProcessedTag');
-        this.usePromptTags = document.getElementById('usePromptTags');
-        this.systemPrompt = document.getElementById('systemPrompt');
-        this.systemPromptBtn = document.getElementById('systemPromptBtn');
-        this.initialize();
+        this.aiModel = document.getElementById('aiModel');
+        this.aiApiUrl = document.getElementById('aiApiUrl');
+        this.aiToken = document.getElementById('aiToken');
+        this.testAiBtn = document.getElementById('testAiBtn');
+        this.aiTestStatePill = document.getElementById('aiTestState');
+
+        this.mistralOcrEnabled = document.getElementById('mistralOcrEnabled');
+        this.mistralFields = document.getElementById('mistralFields');
+        this.mistralApiKey = document.getElementById('mistralApiKey');
+        this.mistralOcrModel = document.getElementById('mistralOcrModel');
+
+        this.envPreview = document.getElementById('envPreview');
+        this.copyEnvPreviewBtn = document.getElementById('copyEnvPreviewBtn');
+        this.finalizeSetupBtn = document.getElementById('finalizeSetupBtn');
     }
 
     initialize() {
-        // Initialize provider settings
-        this.toggleProviderSettings();
-        
-        // Initialize tags section
-        this.toggleTagsInput();
-        
-        // Add event listeners
-        this.aiProvider.addEventListener('change', () => this.toggleProviderSettings());
-        this.showTags.addEventListener('change', () => this.toggleTagsInput());
-        this.aiProcessedTag.addEventListener('change', () => this.toggleAiTagInput());
-        this.usePromptTags.addEventListener('change', () => this.togglePromptTagsInput());
-        
-        // Initialize password toggles
-        this.initializePasswordToggles();
-
-        // Initial state for prompt elements based on usePromptTags
-        if (this.usePromptTags.value === 'yes') {
-            this.disablePromptElements();
-        }
-        
-        // Initialize new sections
-        this.toggleAiTagInput();
-        this.togglePromptTagsInput();
+        this.installFetchCsrfInterceptor();
+        this.populateInitialValues();
+        this.populateAiPresets();
+        this.bindEvents();
+        this.renderExcludeTags();
+        this.updateMfaPanelVisibility();
+        this.toggleIncludeTagField();
+        this.toggleMistralFields();
+        this.showStep(0);
     }
 
-    toggleProviderSettings() {
-        const provider = this.aiProvider.value;
-        const openaiSettings = document.getElementById('openaiSettings');
-        const ollamaSettings = document.getElementById('ollamaSettings');
-        const customSettings = document.getElementById('customSettings');
-        const azureSettings = document.getElementById('azureSettings');
-        
-        // Get all required fields
-        const openaiKey = document.getElementById('openaiKey');
-        const ollamaUrl = document.getElementById('ollamaUrl');
-        const ollamaModel = document.getElementById('ollamaModel');
-        const customBaseUrl = document.getElementById('customBaseUrl');
-        const customApiKey = document.getElementById('customApiKey');
-        const customModel = document.getElementById('customModel');
-        const azureApiKey = document.getElementById('azureApiKey');
-        const azureEndpoint = document.getElementById('azureEndpoint');
-        const azureModel = document.getElementById('azureApiVersion');
-        const azureDeployment = document.getElementById('azureDeploymentName');
-        
-        // Hide all settings first
-        openaiSettings.style.display = 'none';
-        ollamaSettings.style.display = 'none';
-        customSettings.style.display = 'none';
-        azureSettings.style.display = 'none';
-        
-        // Reset all required attributes
-        openaiKey.required = false;
-        ollamaUrl.required = false;
-        ollamaModel.required = false;
-        customBaseUrl.required = false;
-        customApiKey.required = false;
-        customModel.required = false;
-        azureApiKey.required = false;
-        azureEndpoint.required = false;
-        azureModel.required = false;
-        azureDeployment.required = false;
-        
-        // Show and set required fields based on selected provider
-        switch (provider) {
-            case 'openai':
-                openaiSettings.style.display = 'block';
-                openaiKey.required = true;
-                break;
-            case 'ollama':
-                ollamaSettings.style.display = 'block';
-                ollamaUrl.required = true;
-                ollamaModel.required = true;
-                break;
-            case 'custom':
-                customSettings.style.display = 'block';
-                customBaseUrl.required = true;
-                customApiKey.required = true;
-                customModel.required = true;
-                break;
-            case 'azure':
-                azureSettings.style.display = 'block';
-                azureApiKey.required = true;
-                azureEndpoint.required = true;
-                azureModel.required = true;
-                azureDeployment.required = true;
-                break;
-        }
-    }
-
-    toggleTagsInput() {
-        const showTags = this.showTags.value;
-        const tagsInputSection = document.getElementById('tagsInputSection');
-        
-        if (showTags === 'yes') {
-            tagsInputSection.classList.remove('hidden');
-        } else {
-            tagsInputSection.classList.add('hidden');
-        }
-    }
-
-    toggleAiTagInput() {
-        const showAiTag = this.aiProcessedTag.value;
-        const aiTagNameSection = document.getElementById('aiTagNameSection');
-        
-        if (showAiTag === 'yes') {
-            aiTagNameSection.classList.remove('hidden');
-        } else {
-            aiTagNameSection.classList.add('hidden');
-        }
-    }
-
-    togglePromptTagsInput() {
-        const usePromptTags = this.usePromptTags.value;
-        const promptTagsSection = document.getElementById('promptTagsSection');
-        
-        if (usePromptTags === 'yes') {
-            promptTagsSection.classList.remove('hidden');
-            this.disablePromptElements();
-        } else {
-            promptTagsSection.classList.add('hidden');
-            this.enablePromptElements();
-        }
-    }
-
-    disablePromptElements() {
-        this.systemPrompt.disabled = true;
-        this.systemPromptBtn.disabled = true;
-        this.systemPrompt.classList.add('disabled');
-        this.systemPromptBtn.classList.add('disabled');
-    }
-
-    enablePromptElements() {
-        this.systemPrompt.disabled = false;
-        this.systemPromptBtn.disabled = false;
-        this.systemPrompt.classList.remove('disabled');
-        this.systemPromptBtn.classList.remove('disabled');
-    }
-
-    initializePasswordToggles() {
-        document.querySelectorAll('.password-toggle').forEach(toggle => {
-            toggle.addEventListener('click', (e) => {
-                const inputId = e.currentTarget.dataset.input;
-                this.togglePassword(inputId);
-            });
-        });
-    }
-
-    togglePassword(inputId) {
-        const input = document.getElementById(inputId);
-        const icon = input.nextElementSibling.querySelector('i');
-        
-        if (input.type === 'password') {
-            input.type = 'text';
-            icon.classList.remove('fa-eye');
-            icon.classList.add('fa-eye-slash');
-        } else {
-            input.type = 'password';
-            icon.classList.remove('fa-eye-slash');
-            icon.classList.add('fa-eye');
-        }
-    }
-}
-
-class TabManager {
-    constructor() {
-        this.currentTab = 0;
-        this.tabs = Array.from(document.querySelectorAll('.tab-button'));
-        this.contents = Array.from(document.querySelectorAll('.tab-content'));
-        this.prevBtn = document.getElementById('prevBtn');
-        this.nextBtn = document.getElementById('nextBtn');
-        this.submitBtn = document.getElementById('submitBtn');
-        
-        this.initialize();
-    }
-
-    initialize() {
-        // Add click handlers to tab buttons
-        this.tabs.forEach((tab, index) => {
-            tab.addEventListener('click', () => this.showTab(index));
-        });
-
-        // Add click handlers to navigation buttons
-        this.prevBtn.addEventListener('click', () => this.navigate(-1));
-        this.nextBtn.addEventListener('click', () => this.navigate(1));
-
-        // Show initial tab
-        this.showTab(this.currentTab);
-    }
-
-    showTab(index) {
-        if (index < 0 || index >= this.tabs.length) return;
-
-        // Update active states
-        this.tabs.forEach(tab => tab.classList.remove('active'));
-        this.contents.forEach(content => content.classList.remove('active'));
-
-        this.tabs[index].classList.add('active');
-        this.contents[index].classList.add('active');
-
-        // Update navigation buttons
-        this.prevBtn.style.display = index === 0 ? 'none' : 'flex';
-        if (index === this.tabs.length - 1) {
-            this.nextBtn.style.display = 'none';
-            this.submitBtn.style.display = 'flex';
-        } else {
-            this.nextBtn.style.display = 'flex';
-            this.submitBtn.style.display = 'none';
-        }
-
-        this.currentTab = index;
-    }
-
-    navigate(direction) {
-        const newIndex = this.currentTab + direction;
-        if (newIndex >= 0 && newIndex < this.tabs.length) {
-            // Validate current tab before proceeding
-            if (direction > 0 && !this.validateTab(this.currentTab)) {
-                return;
+    installFetchCsrfInterceptor() {
+        const originalFetch = window.fetch;
+        window.fetch = async (...args) => {
+            let [resource, options] = args;
+            options = options || {};
+            const method = String(options.method || 'GET').toUpperCase();
+            if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                if (token) {
+                    if (!options.headers) {
+                        options.headers = {};
+                    }
+                    if (options.headers instanceof Headers) {
+                        if (!options.headers.has('X-CSRF-Token')) {
+                            options.headers.append('X-CSRF-Token', token);
+                        }
+                    } else if (!options.headers['X-CSRF-Token']) {
+                        options.headers['X-CSRF-Token'] = token;
+                    }
+                }
             }
-            this.showTab(newIndex);
+            return originalFetch(resource, options);
+        };
+    }
+
+    populateInitialValues() {
+        this.adminUsername.value = this.config.username || '';
+        this.scanInterval.value = this.config.SCAN_INTERVAL || this.defaults.scanInterval || '*/30 * * * *';
+        this.scanAllDocuments.checked = this.config.PROCESS_PREDEFINED_DOCUMENTS !== 'yes';
+        this.includeTag.value = Array.isArray(this.config.TAGS) && this.config.TAGS.length > 0 ? this.config.TAGS[0] : '';
+        this.excludeTags = Array.isArray(this.config.IGNORE_TAGS) ? this.config.IGNORE_TAGS.slice() : [];
+
+        const mistralEnabled = this.config.MISTRAL_OCR_ENABLED === 'yes';
+        this.mistralOcrEnabled.value = mistralEnabled ? 'yes' : 'no';
+        this.mistralOcrModel.value = this.config.MISTRAL_OCR_MODEL || 'mistral-ocr-latest';
+        this.processedTag.value = this.config.AI_PROCESSED_TAG_NAME || 'ai-processed';
+    }
+
+    populateAiPresets() {
+        this.aiPreset.innerHTML = '';
+
+        const customOption = document.createElement('option');
+        customOption.value = '';
+        customOption.textContent = 'Manual custom configuration';
+        this.aiPreset.appendChild(customOption);
+
+        this.presets.forEach((preset) => {
+            const option = document.createElement('option');
+            option.value = preset.id;
+            option.textContent = preset.label;
+            this.aiPreset.appendChild(option);
+        });
+
+        if (this.presets.length > 0) {
+            this.aiPreset.value = this.presets[0].id;
+            this.applyPreset(this.presets[0]);
+        } else {
+            this.aiProvider.value = 'custom';
         }
     }
 
-    validateTab(tabIndex) {
-        // Get all required fields in the current tab
-        const currentTabContent = this.contents[tabIndex];
-        const requiredFields = currentTabContent.querySelectorAll('[required]');
-        
-        let isValid = true;
-        requiredFields.forEach(field => {
-            if (!field.value.trim()) {
-                isValid = false;
-                field.classList.add('error');
-                // Add error styling
-                field.style.borderColor = 'var(--error-text)';
+    bindEvents() {
+        this.prevBtn.addEventListener('click', () => this.goToPreviousStep());
+        this.nextBtn.addEventListener('click', () => this.goToNextStep());
+
+        this.adminPassword.addEventListener('input', () => this.updatePasswordHint());
+        this.confirmPassword.addEventListener('input', () => this.updatePasswordHint());
+
+        this.enableMfa.addEventListener('change', () => this.updateMfaPanelVisibility());
+        this.startMfaSetupBtn.addEventListener('click', () => this.startMfaSetup());
+        this.confirmMfaCodeBtn.addEventListener('click', () => this.confirmMfaCode());
+
+        this.testPaperlessBtn.addEventListener('click', () => this.testPaperlessConnection());
+        this.fetchMetadataBtn.addEventListener('click', () => this.loadPaperlessMetadata());
+        this.scanAllDocuments.addEventListener('change', () => this.toggleIncludeTagField());
+
+        this.addExcludeTagBtn.addEventListener('click', () => this.addExcludeTag(this.excludeTagInput.value));
+        this.excludeTagInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                this.addExcludeTag(this.excludeTagInput.value);
+            }
+        });
+
+        this.excludeProcessedTagBtn.addEventListener('click', () => {
+            this.addExcludeTag(this.processedTag.value);
+        });
+
+        this.aiPreset.addEventListener('change', () => {
+            const selected = this.presets.find((preset) => preset.id === this.aiPreset.value);
+            this.applyPreset(selected || null);
+        });
+
+        this.testAiBtn.addEventListener('click', () => this.testAiConnection());
+
+        this.mistralOcrEnabled.addEventListener('change', () => this.toggleMistralFields());
+
+        this.copyEnvPreviewBtn.addEventListener('click', () => this.copyEnvPreview());
+        this.finalizeSetupBtn.addEventListener('click', () => this.finalizeSetup());
+    }
+
+    showStep(index) {
+        if (index < 0 || index >= this.steps.length) {
+            return;
+        }
+
+        this.steps.forEach((stepElement, stepIndex) => {
+            stepElement.classList.toggle('is-active', stepIndex === index);
+        });
+
+        this.currentStep = index;
+        this.prevBtn.disabled = index === 0;
+        this.nextBtn.classList.toggle('hidden', index === this.steps.length - 1);
+
+        const progressPercent = ((index + 1) / this.steps.length) * 100;
+        this.progressFill.style.width = `${progressPercent}%`;
+
+        const stepTitle = this.steps[index].dataset.stepTitle || `Step ${index + 1}`;
+        this.stepLabel.textContent = `Step ${index + 1} of ${this.steps.length}: ${stepTitle}`;
+
+        if (index === this.steps.length - 1) {
+            this.renderEnvPreview();
+        }
+    }
+
+    async goToNextStep() {
+        const canContinue = await this.validateStepBeforeContinue(this.currentStep);
+        if (!canContinue) {
+            return;
+        }
+
+        this.showStep(this.currentStep + 1);
+    }
+
+    goToPreviousStep() {
+        this.showStep(this.currentStep - 1);
+    }
+
+    updatePasswordHint() {
+        const password = this.adminPassword.value;
+        const confirmPassword = this.confirmPassword.value;
+
+        if (!password) {
+            this.passwordHint.textContent = 'Use at least 8 characters.';
+            this.passwordHint.className = 'setup-hint';
+            return;
+        }
+
+        if (password.length < 8) {
+            this.passwordHint.textContent = 'Password is too short.';
+            this.passwordHint.className = 'setup-hint setup-hint-error';
+            return;
+        }
+
+        if (confirmPassword && password !== confirmPassword) {
+            this.passwordHint.textContent = 'Passwords do not match.';
+            this.passwordHint.className = 'setup-hint setup-hint-error';
+            return;
+        }
+
+        this.passwordHint.textContent = 'Password looks good.';
+        this.passwordHint.className = 'setup-hint setup-hint-success';
+    }
+
+    updateMfaPanelVisibility() {
+        const enabled = this.enableMfa.value === 'yes';
+        this.mfaSetupPanel.classList.toggle('hidden', !enabled);
+        if (!enabled) {
+            this.mfaState.challengeId = '';
+            this.mfaState.verified = false;
+            this.mfaState.setupStarted = false;
+            this.mfaStatusHint.textContent = '';
+            this.mfaStatusHint.className = 'setup-hint';
+            this.mfaProvisioningBox.classList.add('hidden');
+        }
+    }
+
+    toggleIncludeTagField() {
+        const scanAll = this.scanAllDocuments.checked;
+        this.includeTag.disabled = scanAll;
+        if (scanAll) {
+            this.includeTag.value = '';
+        }
+    }
+
+    toggleMistralFields() {
+        const enabled = this.mistralOcrEnabled.value === 'yes';
+        this.mistralFields.classList.toggle('hidden', !enabled);
+    }
+
+    setPillState(element, type, text) {
+        element.textContent = text;
+        element.className = 'setup-pill';
+        if (type === 'success') {
+            element.classList.add('setup-pill-success');
+        } else if (type === 'error') {
+            element.classList.add('setup-pill-error');
+        } else if (type === 'loading') {
+            element.classList.add('setup-pill-loading');
+        }
+    }
+
+    setButtonLoading(button, loading, loadingText) {
+        if (loading) {
+            if (!button.dataset.originalHtml) {
+                button.dataset.originalHtml = button.innerHTML;
+            }
+            button.disabled = true;
+            button.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loadingText}`;
+            return;
+        }
+
+        button.disabled = false;
+        if (button.dataset.originalHtml) {
+            button.innerHTML = button.dataset.originalHtml;
+        }
+    }
+
+    async request(url, payload) {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload || {})
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.error || 'Request failed');
+        }
+
+        return result;
+    }
+
+    async startMfaSetup() {
+        const username = this.adminUsername.value.trim();
+        if (!username) {
+            await Swal.fire({ icon: 'warning', title: 'Username required', text: 'Please complete username first.' });
+            return;
+        }
+
+        this.setButtonLoading(this.startMfaSetupBtn, true, 'Generating...');
+        try {
+            const result = await this.request('/api/setup/mfa/setup', { username });
+            this.mfaState.challengeId = result.challengeId;
+            this.mfaState.setupStarted = true;
+            this.mfaState.verified = false;
+
+            this.setupMfaSecret.value = result.secret || '';
+            this.setupMfaQrImage.src = result.qrDataUrl || '';
+            this.setupMfaQrImage.classList.toggle('hidden', !result.qrDataUrl);
+            this.mfaProvisioningBox.classList.remove('hidden');
+
+            this.mfaStatusHint.textContent = 'Scan the QR code and confirm with a current authentication code.';
+            this.mfaStatusHint.className = 'setup-hint';
+        } catch (error) {
+            await Swal.fire({ icon: 'error', title: 'MFA setup failed', text: error.message });
+        } finally {
+            this.setButtonLoading(this.startMfaSetupBtn, false);
+        }
+    }
+
+    async confirmMfaCode() {
+        if (!this.mfaState.challengeId) {
+            await Swal.fire({ icon: 'warning', title: 'Setup not started', text: 'Generate a QR code first.' });
+            return;
+        }
+
+        const token = this.setupMfaCode.value.trim();
+        if (!token) {
+            await Swal.fire({ icon: 'warning', title: 'Code required', text: 'Enter your authenticator code.' });
+            return;
+        }
+
+        this.setButtonLoading(this.confirmMfaCodeBtn, true, 'Validating...');
+        try {
+            await this.request('/api/setup/mfa/confirm', {
+                challengeId: this.mfaState.challengeId,
+                token
+            });
+            this.mfaState.verified = true;
+            this.mfaStatusHint.textContent = 'MFA confirmed. You can continue.';
+            this.mfaStatusHint.className = 'setup-hint setup-hint-success';
+            this.setupMfaCode.value = '';
+        } catch (error) {
+            this.mfaState.verified = false;
+            this.mfaStatusHint.textContent = error.message;
+            this.mfaStatusHint.className = 'setup-hint setup-hint-error';
+        } finally {
+            this.setButtonLoading(this.confirmMfaCodeBtn, false);
+        }
+    }
+
+    async testPaperlessConnection() {
+        const payload = {
+            paperlessUrl: this.paperlessUrl.value.trim(),
+            paperlessToken: this.paperlessToken.value.trim()
+        };
+
+        if (!payload.paperlessUrl || !payload.paperlessToken) {
+            await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Enter Paperless URL and token first.' });
+            return;
+        }
+
+        this.setButtonLoading(this.testPaperlessBtn, true, 'Testing...');
+        this.setPillState(this.paperlessTestStatePill, 'loading', 'Testing...');
+
+        try {
+            const result = await this.request('/api/setup/paperless/test', payload);
+            this.paperlessTestState.ran = true;
+            this.paperlessTestState.success = Boolean(result.success);
+            this.paperlessTestState.allowFailure = false;
+
+            if (result.success) {
+                this.setPillState(this.paperlessTestStatePill, 'success', 'Connection valid');
+                await Swal.fire({ icon: 'success', title: 'Paperless test successful', text: result.message || 'Connection and permissions look good.' });
             } else {
-                field.classList.remove('error');
-                field.style.borderColor = '';
+                this.setPillState(this.paperlessTestStatePill, 'error', 'Test failed');
+                await Swal.fire({ icon: 'error', title: 'Paperless test failed', text: result.message || 'Connection test failed.' });
             }
-        });
-
-        if (!isValid) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Required Fields',
-                text: 'Please fill in all required fields before proceeding.',
-                confirmButtonColor: 'var(--accent-primary)'
-            });
-        }
-
-        return isValid;
-    }
-}
-
-// Tags Management
-class TagsManager {
-    constructor(tagInputId = 'tagInput', tagsContainerId = 'tagsContainer', tagsHiddenInputId = 'tags', addButtonSelector = '.add-tag-btn') {
-        this.tagInput = document.getElementById(tagInputId);
-        this.tagsContainer = document.getElementById(tagsContainerId);
-        this.tagsHiddenInput = document.getElementById(tagsHiddenInputId);
-        this.addTagButton = document.querySelector(addButtonSelector);
-
-        if (!this.tagInput || !this.tagsContainer || !this.tagsHiddenInput || !this.addTagButton) {
-            return;
-        }
-
-        this.initialize();
-        
-        // Initialize existing tags with click handlers
-        this.tagsContainer.querySelectorAll('.modern-tag button').forEach(button => {
-            button.addEventListener('click', async () => {
-                const result = await Swal.fire({
-                    title: 'Remove Tag',
-                    text: 'Are you sure you want to remove this tag?',
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes, remove it',
-                    cancelButtonText: 'Cancel',
-                    confirmButtonColor: '#d33',
-                    cancelButtonColor: '#3085d6',
-                    customClass: {
-                        container: 'my-swal'
-                    }
-                });
-
-                if (result.isConfirmed) {
-                    button.closest('.modern-tag').remove();
-                    this.updateHiddenInput();
-                }
-            });
-        });
-    }
-
-    initialize() {
-        // Add event listeners
-        if (!this.addTagButton || !this.tagInput) return;
-
-        this.addTagButton.addEventListener('click', () => this.addTag());
-        this.tagInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                this.addTag();
-            }
-        });
-    }
-
-    async addTag() {
-        const tagText = this.tagInput.value.trim();
-        const specialChars = /[,;:\n\r\\/]/;
-        if (specialChars.test(tagText)) {
-            await Swal.fire({
-                title: 'Invalid Characters',
-                text: 'Tags cannot contain commas, semi-colons, colons, or line breaks.',
-                icon: 'warning',
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#3085d6',
-                customClass: {
-                    container: 'my-swal'
-                }
-            });
-            return;
-        }
-        if (tagText) {
-            const tag = this.createTagElement(tagText);
-            this.tagsContainer.appendChild(tag);
-            this.updateHiddenInput();
-            this.tagInput.value = '';
+        } catch (error) {
+            this.paperlessTestState.ran = true;
+            this.paperlessTestState.success = false;
+            this.setPillState(this.paperlessTestStatePill, 'error', 'Test failed');
+            await Swal.fire({ icon: 'error', title: 'Paperless test failed', text: error.message });
+        } finally {
+            this.setButtonLoading(this.testPaperlessBtn, false);
         }
     }
 
-    createTagElement(text) {
-        const tag = document.createElement('div');
-        tag.className = 'modern-tag fade-in';
-        
-        const tagText = document.createElement('span');
-        tagText.textContent = text;
-        
-        const removeButton = document.createElement('button');
-        removeButton.type = 'button';
-        removeButton.innerHTML = '<i class="fas fa-times"></i>';
-        removeButton.addEventListener('click', async () => {
-            const result = await Swal.fire({
-                title: 'Remove Tag',
-                text: 'Are you sure you want to remove this tag?',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'Yes, remove it',
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                customClass: {
-                    container: 'my-swal'
-                }
-            });
-
-            if (result.isConfirmed) {
-                tag.remove();
-                this.updateHiddenInput();
-            }
-        });
-
-        tag.appendChild(tagText);
-        tag.appendChild(removeButton);
-        
-        return tag;
-    }
-
-    updateHiddenInput() {
-        const tags = Array.from(this.tagsContainer.children)
-            .map(tag => tag.querySelector('span').textContent);
-        this.tagsHiddenInput.value = tags.join(',');
-    }
-}
-
-// Prompt Tags Management
-class PromptTagsManager {
-    constructor() {
-        this.tagInput = document.getElementById('promptTagInput');
-        this.tagsContainer = document.getElementById('promptTagsContainer');
-        this.tagsHiddenInput = document.getElementById('promptTags');
-        this.addTagButton = document.querySelector('.add-prompt-tag-btn');
-        this.initialize();
-        
-        // Initialize existing tags with click handlers
-        document.querySelectorAll('#promptTagsContainer .modern-tag button').forEach(button => {
-            button.addEventListener('click', async () => {
-                const result = await Swal.fire({
-                    title: 'Remove Tag',
-                    text: 'Are you sure you want to remove this tag?',
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes, remove it',
-                    cancelButtonText: 'Cancel',
-                    confirmButtonColor: '#d33',
-                    cancelButtonColor: '#3085d6',
-                    customClass: {
-                        container: 'my-swal'
-                    }
-                });
-
-                if (result.isConfirmed) {
-                    button.closest('.modern-tag').remove();
-                    this.updateHiddenInput();
-                }
-            });
-        });
-    }
-
-    initialize() {
-        // Add event listeners
-        this.addTagButton.addEventListener('click', () => this.addTag());
-        this.tagInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                this.addTag();
-            }
-        });
-    }
-
-    async addTag() {
-        const tagText = this.tagInput.value.trim();
-        const specialChars = /[,;:\n\r\\/]/;
-        if (specialChars.test(tagText)) {
-            await Swal.fire({
-                title: 'Invalid Characters',
-                text: 'Tags cannot contain commas, semi-colons, colons, or line breaks.',
-                icon: 'warning',
-                confirmButtonText: 'OK',
-                confirmButtonColor: '#3085d6',
-                customClass: {
-                    container: 'my-swal'
-                }
-            });
-            return;
-        }
-        if (tagText) {
-            const tag = this.createTagElement(tagText);
-            this.tagsContainer.appendChild(tag);
-            this.updateHiddenInput();
-            this.tagInput.value = '';
-        }
-    }
-
-    createTagElement(text) {
-        const tag = document.createElement('div');
-        tag.className = 'modern-tag fade-in';
-        
-        const tagText = document.createElement('span');
-        tagText.textContent = text;
-        
-        const removeButton = document.createElement('button');
-        removeButton.type = 'button';
-        removeButton.innerHTML = '<i class="fas fa-times"></i>';
-        removeButton.addEventListener('click', async () => {
-            const result = await Swal.fire({
-                title: 'Remove Tag',
-                text: 'Are you sure you want to remove this tag?',
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonText: 'Yes, remove it',
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                customClass: {
-                    container: 'my-swal'
-                }
-            });
-
-            if (result.isConfirmed) {
-                tag.remove();
-                this.updateHiddenInput();
-            }
-        });
-
-        tag.appendChild(tagText);
-        tag.appendChild(removeButton);
-        
-        return tag;
-    }
-
-    updateHiddenInput() {
-        const tags = Array.from(this.tagsContainer.children)
-            .map(tag => tag.querySelector('span').textContent);
-        this.tagsHiddenInput.value = tags.join(',');
-    }
-}
-
-// Prompt Management
-class PromptManager {
-    constructor() {
-        this.systemPrompt = document.getElementById('systemPrompt');
-        this.exampleButton = document.getElementById('systemPromptBtn');
-        this.initialize();
-    }
-
-    initialize() {
-        this.exampleButton.addEventListener('click', () => this.prefillExample());
-    }
-
-    prefillExample() {
-        const examplePrompt = `You are a personalized document analyzer. Your task is to analyze documents and extract relevant information.
-
-Analyze the document content and extract the following information into a structured JSON object:
-
-1. title: Create a concise, meaningful title for the document
-2. correspondent: Identify the sender/institution but do not include addresses
-3. tags: Select up to 4 relevant thematic tags
-4. document_date: Extract the document date (format: YYYY-MM-DD)
-5. document_type: Determine a precise type that classifies the document (e.g. Invoice, Contract, Employer, Information and so on)
-6. language: Determine the document language (e.g. "de" or "en")
-      
-Important rules for the analysis:
-
-For tags:
-- FIRST check the existing tags before suggesting new ones
-- Use only relevant categories
-- Maximum 4 tags per document, less if sufficient (at least 1)
-- Avoid generic or too specific tags
-- Use only the most important information for tag creation
-- The output language is the one used in the document! IMPORTANT!
-
-For the title:
-- Short and concise, NO ADDRESSES
-- Contains the most important identification features
-- For invoices/orders, mention invoice/order number if available
-- The output language is the one used in the document! IMPORTANT!
-
-For the correspondent:
-- Identify the sender or institution
-- When generating the correspondent, always create the shortest possible form of the company name (e.g. "Amazon" instead of "Amazon EU SARL, German branch")
-
-For the document date:
-- Extract the date of the document
-- Use the format YYYY-MM-DD
-- If multiple dates are present, use the most relevant one
-
-For the language:
-- Determine the document language
-- Use language codes like "de" for German or "en" for English
-- If the language is not clear, use "und" as a placeholder`;
-
-        this.systemPrompt.value = examplePrompt;
-    }
-}
-
-// Password Management
-class PasswordManager {
-    constructor() {
-        this.passwordInput = document.getElementById('password');
-        this.confirmPasswordInput = document.getElementById('confirmPassword');
-        this.passwordStrengthDiv = document.getElementById('password-strength');
-        this.passwordMatchDiv = document.getElementById('password-match');
-        this.form = document.getElementById('setupForm');
-        this.initialize();
-    }
-
-    initialize() {
-        // Add event listeners for password validation
-        this.passwordInput.addEventListener('input', () => {
-            const result = this.checkPasswordStrength(this.passwordInput.value);
-            this.passwordStrengthDiv.innerHTML = result.html;
-            if (this.confirmPasswordInput.value) this.checkPasswordMatch();
-        });
-
-        this.confirmPasswordInput.addEventListener('input', () => this.checkPasswordMatch());
-
-        // Add form validation
-        this.initializeFormValidation();
-    }
-
-    checkPasswordStrength(password) {
-        let strength = 0;
-        const checks = {
-            length: password.length >= 8,
-            lowercase: /[a-z]/.test(password),
-            uppercase: /[A-Z]/.test(password),
-            numbers: /\d/.test(password),
-            special: /[!@#$%^&*(),.?":{}|<>]/.test(password)
+    async loadPaperlessMetadata() {
+        const payload = {
+            paperlessUrl: this.paperlessUrl.value.trim(),
+            paperlessToken: this.paperlessToken.value.trim()
         };
 
-        strength = Object.values(checks).filter(Boolean).length;
-
-        let message = '';
-        let color = '';
-
-        switch(strength) {
-            case 0:
-            case 1:
-                message = 'Very Weak';
-                color = 'text-red-500';
-                break;
-            case 2:
-                message = 'Weak';
-                color = 'text-orange-500';
-                break;
-            case 3:
-                message = 'Medium';
-                color = 'text-yellow-500';
-                break;
-            case 4:
-                message = 'Strong';
-                color = 'text-blue-500';
-                break;
-            case 5:
-                message = 'Very Strong';
-                color = 'text-green-500';
-                break;
+        if (!payload.paperlessUrl || !payload.paperlessToken) {
+            await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Enter and test Paperless credentials first.' });
+            return;
         }
 
-        return {
-            isValid: strength >= 3,
-            html: `
-                <div class="${color} text-sm">
-                    <span class="font-medium">Password Strength: ${message}</span>
-                    <ul class="mt-1 list-disc list-inside">
-                        ${!checks.length ? '<li>At least 8 characters</li>' : ''}
-                        ${!checks.lowercase ? '<li>At least 1 lowercase letter</li>' : ''}
-                        ${!checks.uppercase ? '<li>At least 1 uppercase letter</li>' : ''}
-                        ${!checks.numbers ? '<li>At least 1 number</li>' : ''}
-                        ${!checks.special ? '<li>At least 1 special character</li>' : ''}
-                    </ul>
-                </div>
-            `
+        this.setButtonLoading(this.fetchMetadataBtn, true, 'Loading...');
+        this.setPillState(this.metadataLoadStatePill, 'loading', 'Loading...');
+
+        try {
+            const result = await this.request('/api/setup/paperless/metadata', payload);
+            const metadata = result.metadata || {};
+
+            this.documentsCount.textContent = String(metadata.documents ?? '-');
+            this.correspondentsCount.textContent = String(metadata.correspondents ?? '-');
+            this.tagsCount.textContent = String(metadata.tags ?? '-');
+
+            this.metadataState.loaded = true;
+            this.metadataState.tagNames = Array.isArray(result.tagNames) ? result.tagNames : [];
+
+            this.fillTagDatalist();
+            this.setPillState(this.metadataLoadStatePill, 'success', 'Loaded');
+        } catch (error) {
+            this.metadataState.loaded = false;
+            this.setPillState(this.metadataLoadStatePill, 'error', 'Load failed');
+            await Swal.fire({ icon: 'error', title: 'Metadata loading failed', text: error.message });
+        } finally {
+            this.setButtonLoading(this.fetchMetadataBtn, false);
+        }
+    }
+
+    fillTagDatalist() {
+        this.paperlessTagsDatalist.innerHTML = '';
+        this.metadataState.tagNames.forEach((tagName) => {
+            const option = document.createElement('option');
+            option.value = tagName;
+            this.paperlessTagsDatalist.appendChild(option);
+        });
+    }
+
+    addExcludeTag(value) {
+        const normalized = String(value || '').trim();
+        if (!normalized) {
+            return;
+        }
+
+        if (!this.excludeTags.includes(normalized)) {
+            this.excludeTags.push(normalized);
+            this.renderExcludeTags();
+        }
+
+        this.excludeTagInput.value = '';
+    }
+
+    removeExcludeTag(tag) {
+        this.excludeTags = this.excludeTags.filter((entry) => entry !== tag);
+        this.renderExcludeTags();
+    }
+
+    renderExcludeTags() {
+        this.excludeTagsContainer.innerHTML = '';
+
+        if (this.excludeTags.length === 0) {
+            const hint = document.createElement('p');
+            hint.className = 'setup-hint';
+            hint.textContent = 'No excluded tags selected.';
+            this.excludeTagsContainer.appendChild(hint);
+            return;
+        }
+
+        this.excludeTags.forEach((tag) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'setup-chip';
+            chip.innerHTML = `<span>${tag}</span><i class="fas fa-xmark"></i>`;
+            chip.addEventListener('click', () => this.removeExcludeTag(tag));
+            this.excludeTagsContainer.appendChild(chip);
+        });
+    }
+
+    applyPreset(preset) {
+        if (!preset) {
+            this.aiPresetHint.textContent = 'Manual mode: choose provider and enter values yourself.';
+            this.aiProvider.value = 'custom';
+            return;
+        }
+
+        this.aiProvider.value = preset.provider || 'custom';
+        this.aiApiUrl.value = preset.apiUrl || '';
+        this.aiModel.value = preset.model || '';
+        this.aiToken.placeholder = preset.tokenPlaceholder || 'Enter API token if required';
+        this.aiPresetHint.textContent = `Preset "${preset.label}" selected.`;
+    }
+
+    async testAiConnection() {
+        const payload = {
+            aiProvider: this.aiProvider.value.trim().toLowerCase(),
+            apiUrl: this.aiApiUrl.value.trim(),
+            token: this.aiToken.value.trim(),
+            model: this.aiModel.value.trim()
         };
-    }
 
-    checkPasswordMatch() {
-        const password = this.passwordInput.value;
-        const confirmPassword = this.confirmPasswordInput.value;
-        
-        if (confirmPassword) {
-            const matches = password === confirmPassword;
-            this.passwordMatchDiv.innerHTML = matches 
-                ? '<div class="text-green-500 text-sm">Passwords match</div>'
-                : '<div class="text-red-500 text-sm">Passwords do not match</div>';
-            return matches;
+        if (!payload.aiProvider || !payload.model || !payload.apiUrl) {
+            await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Provider, API URL, and model are required.' });
+            return;
         }
-        return false;
+
+        this.setButtonLoading(this.testAiBtn, true, 'Testing...');
+        this.setPillState(this.aiTestStatePill, 'loading', 'Testing...');
+
+        try {
+            const result = await this.request('/api/setup/ai/test', payload);
+            this.aiTestState.ran = true;
+            this.aiTestState.success = Boolean(result.success);
+            this.aiTestState.allowFailure = false;
+
+            if (result.success) {
+                this.setPillState(this.aiTestStatePill, 'success', 'Connection valid');
+                await Swal.fire({ icon: 'success', title: 'AI test successful', text: result.message || 'AI provider is reachable.' });
+            } else {
+                this.setPillState(this.aiTestStatePill, 'error', 'Test failed');
+                await Swal.fire({ icon: 'error', title: 'AI test failed', text: result.message || 'AI connection test failed.' });
+            }
+        } catch (error) {
+            this.aiTestState.ran = true;
+            this.aiTestState.success = false;
+            this.setPillState(this.aiTestStatePill, 'error', 'Test failed');
+            await Swal.fire({ icon: 'error', title: 'AI test failed', text: error.message });
+        } finally {
+            this.setButtonLoading(this.testAiBtn, false);
+        }
     }
 
-    initializeFormValidation() {
-        const originalSubmit = this.form.onsubmit;
-        
-        this.form.onsubmit = (e) => {
-            if (this.passwordInput.value) {  // Only validate if password field is present and has a value
-                const passwordStrength = this.checkPasswordStrength(this.passwordInput.value);
-                const passwordsMatch = this.checkPasswordMatch();
+    async validateStepBeforeContinue(stepIndex) {
+        if (stepIndex === 0) {
+            const username = this.adminUsername.value.trim();
+            const password = this.adminPassword.value;
+            const confirmPassword = this.confirmPassword.value;
 
-                if (!passwordStrength.isValid || !passwordsMatch) {
-                    e.preventDefault();
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Invalid Password',
-                        html: 'Please ensure your password:<br>' +
-                              '- Is strong enough (at least "Medium" strength)<br>' +
-                              '- Matches in both fields'
-                    });
+            if (!username || !password || !confirmPassword) {
+                await Swal.fire({ icon: 'warning', title: 'Required fields', text: 'Please fill all account fields.' });
+                return false;
+            }
+
+            if (password.length < 8) {
+                await Swal.fire({ icon: 'warning', title: 'Password too short', text: 'Use at least 8 characters.' });
+                return false;
+            }
+
+            if (password !== confirmPassword) {
+                await Swal.fire({ icon: 'warning', title: 'Password mismatch', text: 'The two password fields must match.' });
+                return false;
+            }
+
+            return true;
+        }
+
+        if (stepIndex === 1) {
+            if (this.enableMfa.value === 'yes' && !this.mfaState.verified) {
+                await Swal.fire({ icon: 'warning', title: 'MFA not confirmed', text: 'Generate QR code and validate one code before continuing.' });
+                return false;
+            }
+            return true;
+        }
+
+        if (stepIndex === 2) {
+            if (!this.paperlessUrl.value.trim() || !this.paperlessUsername.value.trim() || !this.paperlessToken.value.trim()) {
+                await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Paperless URL, username, and token are required.' });
+                return false;
+            }
+
+            if (this.paperlessTestState.success) {
+                return true;
+            }
+
+            const title = this.paperlessTestState.ran ? 'Paperless test failed' : 'Paperless test not run';
+            const text = this.paperlessTestState.ran
+                ? 'The Paperless test failed. Do you want to continue anyway?'
+                : 'No Paperless test has been run. Continue anyway?';
+
+            const result = await Swal.fire({
+                icon: 'warning',
+                title,
+                text,
+                showCancelButton: true,
+                confirmButtonText: 'Continue anyway',
+                cancelButtonText: 'Go back'
+            });
+
+            this.paperlessTestState.allowFailure = result.isConfirmed;
+            return result.isConfirmed;
+        }
+
+        if (stepIndex === 3) {
+            if (!this.metadataState.loaded) {
+                const result = await Swal.fire({
+                    icon: 'warning',
+                    title: 'Metadata not loaded',
+                    text: 'You have not loaded metadata yet. Continue anyway?',
+                    showCancelButton: true,
+                    confirmButtonText: 'Continue anyway',
+                    cancelButtonText: 'Go back'
+                });
+
+                if (!result.isConfirmed) {
                     return false;
                 }
             }
 
-            // Call the original submit handler if it exists
-            if (originalSubmit) return originalSubmit.call(this.form, e);
-        };
-    }
-}
-
-// Initialize everything when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-    /* eslint-disable no-unused-vars */
-    const tabManager = new TabManager();
-    const themeManager = new ThemeManager();
-    const formManager = new FormManager();
-    const tagsManager = new TagsManager('tagInput', 'tagsContainer', 'tags', '.add-tag-btn');
-    const ignoreTagsManager = new TagsManager('ignoreTagInput', 'ignoreTagsContainer', 'ignoreTags', '.add-ignore-tag-btn');
-    const promptTagsManager = new PromptTagsManager();
-    const promptManager = new PromptManager();
-    const passwordManager = new PasswordManager();
-    /* eslint-enable no-unused-vars */
-});
-
-// Initialize textarea newlines
-document.addEventListener('DOMContentLoaded', (event) => {
-    const systemPromptTextarea = document.getElementById('systemPrompt');
-    systemPromptTextarea.value = systemPromptTextarea.value.replace(/\\n/g, '\n');
-});
-
-// Custom Fields Management
-function toggleCurrencySelect() {
-    const fieldType = document.getElementById('newFieldType').value;
-    const currencySelect = document.getElementById('currencyCode');
-    currencySelect.style.display = fieldType === 'monetary' ? 'block' : 'none';
-}
-
-function updateCustomFieldsJson() {
-    const fieldItems = document.querySelectorAll('.custom-field-item');
-    const fields = Array.from(fieldItems).map(item => {
-        const fieldName = item.querySelector('p.font-medium').textContent;
-        const typeText = item.querySelector('p.text-gray-500').textContent;
-        const data_type = typeText.split('Type: ')[1].split(' ')[0];
-        const currency = typeText.includes('(') ? typeText.split('(')[1].split(')')[0] : null;
-        
-        const field = {
-            value: fieldName,
-            data_type: data_type
-        };
-        
-        if (currency) {
-            field.currency = currency;
-        }
-        
-        return field;
-    });
-    
-    document.getElementById('customFieldsJson').value = JSON.stringify({
-        custom_fields: fields
-    });
-}
-
-function createFieldElement(fieldName, data_type, currency = null) {
-    const div = document.createElement('div');
-    div.className = 'custom-field-item flex items-center gap-2 p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-200 transition-colors';
-    
-    let typeDisplay = `Type: ${data_type}`;
-    if (data_type === 'monetary' && currency) {
-        typeDisplay += ` (${currency})`;
-    }
-    
-    div.innerHTML = `
-        <div class="cursor-move text-gray-400">
-            <i class="fas fa-grip-vertical"></i>
-        </div>
-        <div class="flex-1 flex items-center gap-4">
-            <div class="flex-1">
-                <p class="font-medium">${fieldName}</p>
-                <p class="text-sm text-gray-500">${typeDisplay}</p>
-            </div>
-        </div>
-        <button type="button" 
-                onclick="removeCustomField(this)" 
-                class="text-gray-400 hover:text-red-500 transition-colors">
-            <i class="fas fa-trash"></i>
-        </button>
-    `;
-    return div;
-}
-
-function addCustomField() {
-    const nameInput = document.getElementById('newFieldName');
-    const typeSelect = document.getElementById('newFieldType');
-    const currencySelect = document.getElementById('currencyCode');
-    const fieldsList = document.getElementById('customFieldsList');
-    
-    const fieldName = nameInput.value.trim();
-    const data_type = typeSelect.value;
-    const currency = data_type === 'monetary' ? currencySelect.value : null;
-    
-    if (!fieldName) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Invalid Field Name',
-            text: 'Please enter a field name'
-        });
-        return;
-    }
-    
-    // Check for duplicates
-    const existingFields = document.querySelectorAll('.custom-field-item p.font-medium');
-    if (Array.from(existingFields).some(p => p.textContent === fieldName)) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Duplicate Field',
-            text: 'A field with this name already exists'
-        });
-        return;
-    }
-    
-    const fieldElement = createFieldElement(fieldName, data_type, currency);
-    fieldsList.appendChild(fieldElement);
-    
-    // Reset inputs
-    nameInput.value = '';
-    
-    // Update hidden JSON input
-    updateCustomFieldsJson();
-}
-
-function removeCustomField(button) {
-    const fieldItem = button.closest('.custom-field-item');
-    Swal.fire({
-        title: 'Delete Field?',
-        text: 'Are you sure you want to delete this custom field?',
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#d33',
-        cancelButtonColor: '#3085d6',
-        confirmButtonText: 'Yes, delete it!'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            fieldItem.remove();
-            updateCustomFieldsJson();
-        }
-    });
-}
-
-// Fix form submission
-document.addEventListener('DOMContentLoaded', function() {
-    const setupForm = document.getElementById('setupForm');
-    if (setupForm) {
-        setupForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            // Check if processing all documents without specific tags
-            const showTags = document.getElementById('showTags').value;
-            if (showTags === 'no') {
-                const result = await Swal.fire({
+            if (!this.scanAllDocuments.checked && !this.includeTag.value.trim()) {
+                await Swal.fire({
                     icon: 'warning',
-                    title: 'Attention!',
-                    html: `
-                        <p>You haven't selected any specific tags for document processing.</p>
-                        <p class="mt-4"><strong>This means ALL documents will be automatically processed by the AI system!</strong></p>
-                        <p class="mt-4">Do you want to continue?</p>
-                    `,
-                    showCancelButton: true,
-                    confirmButtonText: 'Yes, continue',
-                    cancelButtonText: 'No, cancel',
-                    confirmButtonColor: '#3085d6',
-                    cancelButtonColor: '#d33'
+                    title: 'Include tag required',
+                    text: 'Select an include tag or enable "Always scan all documents".'
                 });
-
-                if (!result.isConfirmed) {
-                    // User cancelled - set showTags to 'yes' and scroll to it
-                    document.getElementById('showTags').value = 'yes';
-                    // Trigger the change event to show the tags input section
-                    document.getElementById('showTags').dispatchEvent(new Event('change'));
-                    // Scroll to the element
-                    document.getElementById('showTags').scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    return;
-                }
+                return false;
             }
 
-            // Show loading state
-            const submitBtn = setupForm.querySelector('button[type="submit"]');
-            const originalBtnText = submitBtn.innerHTML;
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            return true;
+        }
 
-            try {
-                const formData = new FormData(setupForm);
-                const response = await fetch('/setup', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(Object.fromEntries(formData))
-                });
+        if (stepIndex === 4) {
+            if (!this.aiProvider.value.trim() || !this.aiApiUrl.value.trim() || !this.aiModel.value.trim()) {
+                await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Provider, API URL, and model are required.' });
+                return false;
+            }
 
-                const result = await response.json();
+            const provider = this.aiProvider.value.trim().toLowerCase();
+            const tokenRequired = provider === 'openai' || provider === 'custom' || provider === 'azure';
+            if (tokenRequired && !this.aiToken.value.trim()) {
+                await Swal.fire({ icon: 'warning', title: 'Token required', text: `Token is required for provider ${provider}.` });
+                return false;
+            }
 
-                if (result.success) {
-                    await Swal.fire({
-                        icon: 'success',
-                        title: 'Success!',
-                        text: result.message,
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
+            if (this.aiTestState.success) {
+                return true;
+            }
 
-                    if (result.restart) {
-                        let countdown = 5;
-                        Swal.fire({
-                            title: 'Restarting...',
-                            text: `Application will restart in ${countdown} seconds`,
-                            icon: 'info',
-                            showConfirmButton: false,
-                            allowOutsideClick: false
-                        });
+            const result = await Swal.fire({
+                icon: 'warning',
+                title: this.aiTestState.ran ? 'AI test failed' : 'AI test not run',
+                text: this.aiTestState.ran
+                    ? 'The AI test failed. Do you want to continue anyway?'
+                    : 'No AI test has been run. Continue anyway?',
+                showCancelButton: true,
+                confirmButtonText: 'Continue anyway',
+                cancelButtonText: 'Go back'
+            });
 
-                        const countdownInterval = setInterval(() => {
-                            countdown--;
+            this.aiTestState.allowFailure = result.isConfirmed;
+            return result.isConfirmed;
+        }
+
+        if (stepIndex === 5) {
+            if (this.mistralOcrEnabled.value === 'yes' && !this.mistralApiKey.value.trim()) {
+                await Swal.fire({ icon: 'warning', title: 'Mistral API key required', text: 'Enter the Mistral API key or disable OCR fallback.' });
+                return false;
+            }
+            return true;
+        }
+
+        return true;
+    }
+
+    buildEnvPreview() {
+        const preview = [];
+        const provider = this.aiProvider.value.trim().toLowerCase();
+
+        preview.push(`PAPERLESS_API_URL=${this.paperlessUrl.value.trim().replace(/\/+$/, '').replace(/\/api$/, '')}/api`);
+        preview.push(`PAPERLESS_API_TOKEN=${this.paperlessToken.value.trim()}`);
+        preview.push(`PAPERLESS_USERNAME=${this.paperlessUsername.value.trim()}`);
+        preview.push(`PROCESS_PREDEFINED_DOCUMENTS=${this.scanAllDocuments.checked ? 'no' : 'yes'}`);
+        preview.push(`TAGS=${this.scanAllDocuments.checked ? '' : this.includeTag.value.trim()}`);
+        preview.push(`IGNORE_TAGS=${this.excludeTags.join(',')}`);
+        preview.push(`ADD_AI_PROCESSED_TAG=${this.processedTag.value.trim() ? 'yes' : 'no'}`);
+        preview.push(`AI_PROCESSED_TAG_NAME=${this.processedTag.value.trim() || 'ai-processed'}`);
+        preview.push(`DISABLE_AUTOMATIC_PROCESSING=${this.automaticScanEnabled.value === 'yes' ? 'no' : 'yes'}`);
+        preview.push(`SCAN_INTERVAL=${this.scanInterval.value.trim() || '*/30 * * * *'}`);
+        preview.push(`AI_PROVIDER=${provider}`);
+
+        if (provider === 'openai') {
+            preview.push(`OPENAI_API_KEY=${this.aiToken.value.trim()}`);
+            preview.push(`OPENAI_MODEL=${this.aiModel.value.trim()}`);
+        } else if (provider === 'ollama') {
+            preview.push(`OLLAMA_API_URL=${this.aiApiUrl.value.trim()}`);
+            preview.push(`OLLAMA_MODEL=${this.aiModel.value.trim()}`);
+        } else if (provider === 'azure') {
+            preview.push(`AZURE_ENDPOINT=${this.aiApiUrl.value.trim()}`);
+            preview.push(`AZURE_API_KEY=${this.aiToken.value.trim()}`);
+            preview.push(`AZURE_DEPLOYMENT_NAME=${this.aiModel.value.trim()}`);
+            preview.push('AZURE_API_VERSION=2023-05-15');
+        } else {
+            preview.push(`CUSTOM_BASE_URL=${this.aiApiUrl.value.trim()}`);
+            preview.push(`CUSTOM_API_KEY=${this.aiToken.value.trim()}`);
+            preview.push(`CUSTOM_MODEL=${this.aiModel.value.trim()}`);
+        }
+
+        preview.push(`MISTRAL_OCR_ENABLED=${this.mistralOcrEnabled.value === 'yes' ? 'yes' : 'no'}`);
+        preview.push(`MISTRAL_API_KEY=${this.mistralApiKey.value.trim()}`);
+        preview.push(`MISTRAL_OCR_MODEL=${this.mistralOcrModel.value.trim() || 'mistral-ocr-latest'}`);
+
+        return preview.join('\n');
+    }
+
+    renderEnvPreview() {
+        this.envPreview.value = this.buildEnvPreview();
+    }
+
+    async copyEnvPreview() {
+        this.renderEnvPreview();
+        try {
+            await navigator.clipboard.writeText(this.envPreview.value);
+            await Swal.fire({ icon: 'success', title: 'Copied', text: 'Environment keys copied to clipboard.' });
+        } catch (_error) {
+            this.envPreview.select();
+            document.execCommand('copy');
+            await Swal.fire({ icon: 'success', title: 'Copied', text: 'Environment keys copied to clipboard.' });
+        }
+    }
+
+    buildFinalizePayload() {
+        return {
+            adminUsername: this.adminUsername.value.trim(),
+            adminPassword: this.adminPassword.value,
+            enableMfa: this.enableMfa.value === 'yes',
+            mfaChallengeId: this.mfaState.challengeId,
+            paperlessUrl: this.paperlessUrl.value.trim(),
+            paperlessUsername: this.paperlessUsername.value.trim(),
+            paperlessToken: this.paperlessToken.value.trim(),
+            scanAllDocuments: this.scanAllDocuments.checked,
+            includeTag: this.includeTag.value.trim(),
+            excludeTags: this.excludeTags,
+            processedTag: this.processedTag.value.trim(),
+            automaticScanEnabled: this.automaticScanEnabled.value === 'yes',
+            scanInterval: this.scanInterval.value.trim(),
+            aiProvider: this.aiProvider.value.trim().toLowerCase(),
+            aiApiUrl: this.aiApiUrl.value.trim(),
+            aiToken: this.aiToken.value.trim(),
+            aiModel: this.aiModel.value.trim(),
+            allowFailedPaperlessTest: this.paperlessTestState.allowFailure,
+            allowFailedAiTest: this.aiTestState.allowFailure,
+            mistralOcrEnabled: this.mistralOcrEnabled.value === 'yes',
+            mistralApiKey: this.mistralApiKey.value.trim(),
+            mistralOcrModel: this.mistralOcrModel.value.trim() || 'mistral-ocr-latest'
+        };
+    }
+
+    async finalizeSetup() {
+        const validations = [];
+        for (let index = 0; index <= 5; index += 1) {
+            // eslint-disable-next-line no-await-in-loop
+            const valid = await this.validateStepBeforeContinue(index);
+            if (!valid) {
+                validations.push(index);
+                break;
+            }
+        }
+
+        if (validations.length > 0) {
+            this.showStep(validations[0]);
+            return;
+        }
+
+        this.renderEnvPreview();
+
+        const confirm = await Swal.fire({
+            icon: 'question',
+            title: 'Finalize setup?',
+            text: 'This writes your .env configuration and restarts the container.',
+            showCancelButton: true,
+            confirmButtonText: 'Finalize now',
+            cancelButtonText: 'Cancel'
+        });
+
+        if (!confirm.isConfirmed) {
+            return;
+        }
+
+        this.setButtonLoading(this.finalizeSetupBtn, true, 'Finalizing...');
+
+        try {
+            const payload = this.buildFinalizePayload();
+            const result = await this.request('/api/setup/complete', payload);
+
+            if (result.envPreview) {
+                this.envPreview.value = result.envPreview;
+            }
+
+            await Swal.fire({
+                icon: 'success',
+                title: 'Setup saved',
+                text: result.message || 'Setup completed successfully.',
+                timer: 1800,
+                showConfirmButton: false
+            });
+
+            if (result.restart) {
+                let countdown = 5;
+                await Swal.fire({
+                    icon: 'info',
+                    title: 'Restarting',
+                    text: `Container restart in ${countdown} seconds...`,
+                    showConfirmButton: false,
+                    allowOutsideClick: false,
+                    didOpen: () => {
+                        const intervalId = setInterval(() => {
+                            countdown -= 1;
                             if (countdown < 0) {
-                                clearInterval(countdownInterval);
+                                clearInterval(intervalId);
                                 window.location.href = '/dashboard';
-                            } else {
-                                Swal.update({
-                                    text: `Application will restart in ${countdown} seconds`
-                                });
+                                return;
                             }
+
+                            Swal.update({
+                                text: `Container restart in ${countdown} seconds...`
+                            });
                         }, 1000);
                     }
-                } else {
-                    throw new Error(result.error || 'An unknown error occurred');
-                }
-            } catch (error) {
-                await Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: error.message
                 });
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalBtnText;
             }
-        });
+        } catch (error) {
+            await Swal.fire({ icon: 'error', title: 'Finalize failed', text: error.message });
+        } finally {
+            this.setButtonLoading(this.finalizeSetupBtn, false);
+        }
     }
+}
 
-    // Initialize Sortable.js for drag-and-drop
-    const fieldsList = document.getElementById('customFieldsList');
-    if (fieldsList) {
-        new Sortable(fieldsList, {
-            animation: 150,
-            handle: '.cursor-move',
-            onEnd: updateCustomFieldsJson
-        });
-    }
-    
-    // Initialize currency select visibility
-    toggleCurrencySelect();
-    
-    // Add keyboard event listener for the name input
-    const nameInput = document.getElementById('newFieldName');
-    if (nameInput) {
-        nameInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                addCustomField();
-            }
-        });
-    }
-    
-    // Add change event listener for field type
-    const typeSelect = document.getElementById('newFieldType');
-    if (typeSelect) {
-        typeSelect.addEventListener('change', toggleCurrencySelect);
-    }
+document.addEventListener('DOMContentLoaded', () => {
+    window.setupWizard = new SetupWizard();
 });
