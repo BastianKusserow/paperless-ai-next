@@ -53,7 +53,7 @@
                     <p class="setup-section-help">Create the initial Paperless-AI next administrator account.</p>
 
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                        <div class="space-y-2">
+                        <div class="space-y-2 md:col-span-2">
                             <label for="adminUsername" class="text-sm font-medium">Username</label>
                             <input id="adminUsername" name="adminUsername" type="text" class="setup-input" required autocomplete="username">
                         </div>
@@ -61,12 +61,11 @@
                             <label for="adminPassword" class="text-sm font-medium">Password</label>
                             <input id="adminPassword" name="adminPassword" type="password" class="setup-input" required autocomplete="new-password" minlength="8">
                         </div>
-                    </div>
-
-                    <div class="space-y-2 mt-4">
-                        <label for="confirmPassword" class="text-sm font-medium">Confirm password</label>
-                        <input id="confirmPassword" name="confirmPassword" type="password" class="setup-input" required autocomplete="new-password" minlength="8">
-                        <p id="passwordHint" class="setup-hint">Use at least 8 characters.</p>
+                        <div class="space-y-2">
+                            <label for="confirmPassword" class="text-sm font-medium">Confirm password</label>
+                            <input id="confirmPassword" name="confirmPassword" type="password" class="setup-input" required autocomplete="new-password" minlength="8">
+                            <p id="passwordHint" class="setup-hint">Use at least 8 characters.</p>
+                        </div>
                     </div>
                 </section>
 
@@ -241,6 +240,7 @@
                         <div class="space-y-2 md:col-span-2">
                             <label for="aiToken" class="text-sm font-medium">API token</label>
                             <input id="aiToken" type="password" class="setup-input" placeholder="Enter token if required">
+                            <p class="setup-hint">For custom endpoints, this field can stay empty if the API does not require authentication.</p>
                         </div>
                     </div>
 

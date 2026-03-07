@@ -12,6 +12,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const RestrictionPromptService = require('./restrictionPromptService');
 const responseLogPath = path.join('/app', 'data', 'logs', 'response.txt');
+const CUSTOM_PROVIDER_FALLBACK_API_KEY = 'no-auth-required';
 
 class CustomOpenAIService {
   constructor() {
@@ -23,7 +24,8 @@ class CustomOpenAIService {
     if (!this.client && config.aiProvider === 'custom') {
       this.client = new OpenAI({
         baseURL: config.custom.apiUrl,
-        apiKey: config.custom.apiKey
+        // OpenAI-compatible SDKs require an apiKey value even when auth is disabled.
+        apiKey: config.custom.apiKey || CUSTOM_PROVIDER_FALLBACK_API_KEY
       });
     }
   }

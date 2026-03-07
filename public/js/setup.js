@@ -213,6 +213,28 @@ class SetupWizard {
         this.finalizeSetupBtn.addEventListener('click', () => this.finalizeSetup());
     }
 
+    getPopupThemeOptions() {
+        return {
+            customClass: {
+                popup: 'setup-swal-popup',
+                title: 'setup-swal-title',
+                htmlContainer: 'setup-swal-html',
+                actions: 'setup-swal-actions',
+                confirmButton: 'setup-swal-confirm',
+                cancelButton: 'setup-swal-cancel'
+            },
+            buttonsStyling: false,
+            backdrop: 'rgba(2, 6, 23, 0.72)'
+        };
+    }
+
+    showPopup(options = {}) {
+        return Swal.fire({
+            ...this.getPopupThemeOptions(),
+            ...options
+        });
+    }
+
     showStep(index) {
         if (index < 0 || index >= this.steps.length) {
             return;
@@ -350,7 +372,7 @@ class SetupWizard {
     async startMfaSetup() {
         const username = this.adminUsername.value.trim();
         if (!username) {
-            await Swal.fire({ icon: 'warning', title: 'Username required', text: 'Please complete username first.' });
+            await this.showPopup({ icon: 'warning', title: 'Username required', text: 'Please complete username first.' });
             return;
         }
 
@@ -369,7 +391,7 @@ class SetupWizard {
             this.mfaStatusHint.textContent = 'Scan the QR code and confirm with a current authentication code.';
             this.mfaStatusHint.className = 'setup-hint';
         } catch (error) {
-            await Swal.fire({ icon: 'error', title: 'MFA setup failed', text: error.message });
+            await this.showPopup({ icon: 'error', title: 'MFA setup failed', text: error.message });
         } finally {
             this.setButtonLoading(this.startMfaSetupBtn, false);
         }
@@ -377,13 +399,13 @@ class SetupWizard {
 
     async confirmMfaCode() {
         if (!this.mfaState.challengeId) {
-            await Swal.fire({ icon: 'warning', title: 'Setup not started', text: 'Generate a QR code first.' });
+            await this.showPopup({ icon: 'warning', title: 'Setup not started', text: 'Generate a QR code first.' });
             return;
         }
 
         const token = this.setupMfaCode.value.trim();
         if (!token) {
-            await Swal.fire({ icon: 'warning', title: 'Code required', text: 'Enter your authenticator code.' });
+            await this.showPopup({ icon: 'warning', title: 'Code required', text: 'Enter your authenticator code.' });
             return;
         }
 
@@ -413,7 +435,7 @@ class SetupWizard {
         };
 
         if (!payload.paperlessUrl || !payload.paperlessToken) {
-            await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Enter Paperless URL and token first.' });
+            await this.showPopup({ icon: 'warning', title: 'Missing values', text: 'Enter Paperless URL and token first.' });
             return;
         }
 
@@ -428,16 +450,16 @@ class SetupWizard {
 
             if (result.success) {
                 this.setPillState(this.paperlessTestStatePill, 'success', 'Connection valid');
-                await Swal.fire({ icon: 'success', title: 'Paperless test successful', text: result.message || 'Connection and permissions look good.' });
+                await this.showPopup({ icon: 'success', title: 'Paperless test successful', text: result.message || 'Connection and permissions look good.' });
             } else {
                 this.setPillState(this.paperlessTestStatePill, 'error', 'Test failed');
-                await Swal.fire({ icon: 'error', title: 'Paperless test failed', text: result.message || 'Connection test failed.' });
+                await this.showPopup({ icon: 'error', title: 'Paperless test failed', text: result.message || 'Connection test failed.' });
             }
         } catch (error) {
             this.paperlessTestState.ran = true;
             this.paperlessTestState.success = false;
             this.setPillState(this.paperlessTestStatePill, 'error', 'Test failed');
-            await Swal.fire({ icon: 'error', title: 'Paperless test failed', text: error.message });
+            await this.showPopup({ icon: 'error', title: 'Paperless test failed', text: error.message });
         } finally {
             this.setButtonLoading(this.testPaperlessBtn, false);
         }
@@ -450,7 +472,7 @@ class SetupWizard {
         };
 
         if (!payload.paperlessUrl || !payload.paperlessToken) {
-            await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Enter and test Paperless credentials first.' });
+            await this.showPopup({ icon: 'warning', title: 'Missing values', text: 'Enter and test Paperless credentials first.' });
             return;
         }
 
@@ -473,7 +495,7 @@ class SetupWizard {
         } catch (error) {
             this.metadataState.loaded = false;
             this.setPillState(this.metadataLoadStatePill, 'error', 'Load failed');
-            await Swal.fire({ icon: 'error', title: 'Metadata loading failed', text: error.message });
+            await this.showPopup({ icon: 'error', title: 'Metadata loading failed', text: error.message });
         } finally {
             this.setButtonLoading(this.fetchMetadataBtn, false);
         }
@@ -530,7 +552,7 @@ class SetupWizard {
 
     applyPreset(preset) {
         if (!preset) {
-            this.aiPresetHint.textContent = 'Manual mode: choose provider and enter values yourself.';
+            this.aiPresetHint.textContent = 'Manual mode: choose provider and enter values yourself. Token is optional for custom endpoints.';
             this.aiProvider.value = 'custom';
             return;
         }
@@ -539,7 +561,7 @@ class SetupWizard {
         this.aiApiUrl.value = preset.apiUrl || '';
         this.aiModel.value = preset.model || '';
         this.aiToken.placeholder = preset.tokenPlaceholder || 'Enter API token if required';
-        this.aiPresetHint.textContent = `Preset "${preset.label}" selected.`;
+        this.aiPresetHint.textContent = `Preset "${preset.label}" selected.${this.aiProvider.value === 'custom' ? ' Token can stay empty if your endpoint allows anonymous access.' : ''}`;
     }
 
     async testAiConnection() {
@@ -551,7 +573,7 @@ class SetupWizard {
         };
 
         if (!payload.aiProvider || !payload.model || !payload.apiUrl) {
-            await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Provider, API URL, and model are required.' });
+            await this.showPopup({ icon: 'warning', title: 'Missing values', text: 'Provider, API URL, and model are required.' });
             return;
         }
 
@@ -566,16 +588,16 @@ class SetupWizard {
 
             if (result.success) {
                 this.setPillState(this.aiTestStatePill, 'success', 'Connection valid');
-                await Swal.fire({ icon: 'success', title: 'AI test successful', text: result.message || 'AI provider is reachable.' });
+                await this.showPopup({ icon: 'success', title: 'AI test successful', text: result.message || 'AI provider is reachable.' });
             } else {
                 this.setPillState(this.aiTestStatePill, 'error', 'Test failed');
-                await Swal.fire({ icon: 'error', title: 'AI test failed', text: result.message || 'AI connection test failed.' });
+                await this.showPopup({ icon: 'error', title: 'AI test failed', text: result.message || 'AI connection test failed.' });
             }
         } catch (error) {
             this.aiTestState.ran = true;
             this.aiTestState.success = false;
             this.setPillState(this.aiTestStatePill, 'error', 'Test failed');
-            await Swal.fire({ icon: 'error', title: 'AI test failed', text: error.message });
+            await this.showPopup({ icon: 'error', title: 'AI test failed', text: error.message });
         } finally {
             this.setButtonLoading(this.testAiBtn, false);
         }
@@ -588,17 +610,17 @@ class SetupWizard {
             const confirmPassword = this.confirmPassword.value;
 
             if (!username || !password || !confirmPassword) {
-                await Swal.fire({ icon: 'warning', title: 'Required fields', text: 'Please fill all account fields.' });
+                await this.showPopup({ icon: 'warning', title: 'Required fields', text: 'Please fill all account fields.' });
                 return false;
             }
 
             if (password.length < 8) {
-                await Swal.fire({ icon: 'warning', title: 'Password too short', text: 'Use at least 8 characters.' });
+                await this.showPopup({ icon: 'warning', title: 'Password too short', text: 'Use at least 8 characters.' });
                 return false;
             }
 
             if (password !== confirmPassword) {
-                await Swal.fire({ icon: 'warning', title: 'Password mismatch', text: 'The two password fields must match.' });
+                await this.showPopup({ icon: 'warning', title: 'Password mismatch', text: 'The two password fields must match.' });
                 return false;
             }
 
@@ -607,7 +629,7 @@ class SetupWizard {
 
         if (stepIndex === 1) {
             if (this.enableMfa.value === 'yes' && !this.mfaState.verified) {
-                await Swal.fire({ icon: 'warning', title: 'MFA not confirmed', text: 'Generate QR code and validate one code before continuing.' });
+                await this.showPopup({ icon: 'warning', title: 'MFA not confirmed', text: 'Generate QR code and validate one code before continuing.' });
                 return false;
             }
             return true;
@@ -615,7 +637,7 @@ class SetupWizard {
 
         if (stepIndex === 2) {
             if (!this.paperlessUrl.value.trim() || !this.paperlessUsername.value.trim() || !this.paperlessToken.value.trim()) {
-                await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Paperless URL, username, and token are required.' });
+                await this.showPopup({ icon: 'warning', title: 'Missing values', text: 'Paperless URL, username, and token are required.' });
                 return false;
             }
 
@@ -628,7 +650,7 @@ class SetupWizard {
                 ? 'The Paperless test failed. Do you want to continue anyway?'
                 : 'No Paperless test has been run. Continue anyway?';
 
-            const result = await Swal.fire({
+            const result = await this.showPopup({
                 icon: 'warning',
                 title,
                 text,
@@ -643,7 +665,7 @@ class SetupWizard {
 
         if (stepIndex === 3) {
             if (!this.metadataState.loaded) {
-                const result = await Swal.fire({
+                const result = await this.showPopup({
                     icon: 'warning',
                     title: 'Metadata not loaded',
                     text: 'You have not loaded metadata yet. Continue anyway?',
@@ -658,7 +680,7 @@ class SetupWizard {
             }
 
             if (!this.scanAllDocuments.checked && !this.includeTag.value.trim()) {
-                await Swal.fire({
+                await this.showPopup({
                     icon: 'warning',
                     title: 'Include tag required',
                     text: 'Select an include tag or enable "Always scan all documents".'
@@ -671,14 +693,14 @@ class SetupWizard {
 
         if (stepIndex === 4) {
             if (!this.aiProvider.value.trim() || !this.aiApiUrl.value.trim() || !this.aiModel.value.trim()) {
-                await Swal.fire({ icon: 'warning', title: 'Missing values', text: 'Provider, API URL, and model are required.' });
+                await this.showPopup({ icon: 'warning', title: 'Missing values', text: 'Provider, API URL, and model are required.' });
                 return false;
             }
 
             const provider = this.aiProvider.value.trim().toLowerCase();
-            const tokenRequired = provider === 'openai' || provider === 'custom' || provider === 'azure';
+            const tokenRequired = provider === 'openai' || provider === 'azure';
             if (tokenRequired && !this.aiToken.value.trim()) {
-                await Swal.fire({ icon: 'warning', title: 'Token required', text: `Token is required for provider ${provider}.` });
+                await this.showPopup({ icon: 'warning', title: 'Token required', text: `Token is required for provider ${provider}.` });
                 return false;
             }
 
@@ -686,7 +708,7 @@ class SetupWizard {
                 return true;
             }
 
-            const result = await Swal.fire({
+            const result = await this.showPopup({
                 icon: 'warning',
                 title: this.aiTestState.ran ? 'AI test failed' : 'AI test not run',
                 text: this.aiTestState.ran
@@ -703,7 +725,7 @@ class SetupWizard {
 
         if (stepIndex === 5) {
             if (this.mistralOcrEnabled.value === 'yes' && !this.mistralApiKey.value.trim()) {
-                await Swal.fire({ icon: 'warning', title: 'Mistral API key required', text: 'Enter the Mistral API key or disable OCR fallback.' });
+                await this.showPopup({ icon: 'warning', title: 'Mistral API key required', text: 'Enter the Mistral API key or disable OCR fallback.' });
                 return false;
             }
             return true;
@@ -760,11 +782,11 @@ class SetupWizard {
         this.renderEnvPreview();
         try {
             await navigator.clipboard.writeText(this.envPreview.value);
-            await Swal.fire({ icon: 'success', title: 'Copied', text: 'Environment keys copied to clipboard.' });
+            await this.showPopup({ icon: 'success', title: 'Copied', text: 'Environment keys copied to clipboard.' });
         } catch (_error) {
             this.envPreview.select();
             document.execCommand('copy');
-            await Swal.fire({ icon: 'success', title: 'Copied', text: 'Environment keys copied to clipboard.' });
+            await this.showPopup({ icon: 'success', title: 'Copied', text: 'Environment keys copied to clipboard.' });
         }
     }
 
@@ -813,7 +835,7 @@ class SetupWizard {
 
         this.renderEnvPreview();
 
-        const confirm = await Swal.fire({
+        const confirm = await this.showPopup({
             icon: 'question',
             title: 'Finalize setup?',
             text: 'This writes your .env configuration and restarts the container.',
@@ -836,7 +858,7 @@ class SetupWizard {
                 this.envPreview.value = result.envPreview;
             }
 
-            await Swal.fire({
+            await this.showPopup({
                 icon: 'success',
                 title: 'Setup saved',
                 text: result.message || 'Setup completed successfully.',
@@ -846,7 +868,7 @@ class SetupWizard {
 
             if (result.restart) {
                 let countdown = 5;
-                await Swal.fire({
+                await this.showPopup({
                     icon: 'info',
                     title: 'Restarting',
                     text: `Container restart in ${countdown} seconds...`,
@@ -869,7 +891,7 @@ class SetupWizard {
                 });
             }
         } catch (error) {
-            await Swal.fire({ icon: 'error', title: 'Finalize failed', text: error.message });
+            await this.showPopup({ icon: 'error', title: 'Finalize failed', text: error.message });
         } finally {
             this.setButtonLoading(this.finalizeSetupBtn, false);
         }

@@ -6,6 +6,8 @@ const config = require('../config/config');
 const AzureOpenAI = require('openai').AzureOpenAI;
 const { validateApiUrl } = require('./serviceUtils');
 
+const CUSTOM_PROVIDER_FALLBACK_API_KEY = 'no-auth-required';
+
 class SetupService {
   constructor() {
     this.envPath = path.join(process.cwd(), 'data', '.env');
@@ -169,7 +171,8 @@ class SetupService {
 
     const config = {
       baseURL: url,
-      apiKey: apiKey,
+      // OpenAI-compatible SDKs expect an apiKey option even for endpoints without auth.
+      apiKey: apiKey || CUSTOM_PROVIDER_FALLBACK_API_KEY,
       model: model
     };
     console.log('Custom AI config:', config);

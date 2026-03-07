@@ -307,6 +307,57 @@ main {
     padding: 0.28rem 0.58rem;
 }
 
+.setup-swal-popup {
+    border-radius: 1rem !important;
+    border: 1px solid color-mix(in srgb, var(--border-color) 76%, transparent) !important;
+    background:
+        radial-gradient(circle at 12% 14%, rgba(14, 165, 233, 0.08), transparent 42%),
+        radial-gradient(circle at 88% 82%, rgba(34, 197, 94, 0.07), transparent 40%),
+        color-mix(in srgb, var(--bg-primary) 92%, var(--bg-secondary)) !important;
+    box-shadow: 0 24px 50px -30px rgba(2, 6, 23, 0.65) !important;
+}
+
+.setup-swal-title {
+    color: var(--text-primary) !important;
+    font-family: 'Manrope', sans-serif !important;
+    font-weight: 700 !important;
+}
+
+.setup-swal-html {
+    color: var(--text-secondary) !important;
+    font-family: 'Manrope', sans-serif !important;
+}
+
+.setup-swal-confirm,
+.setup-swal-cancel {
+    border: none !important;
+    border-radius: 0.65rem !important;
+    padding: 0.58rem 0.95rem !important;
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+    margin: 0 0.25rem !important;
+}
+
+.setup-swal-confirm {
+    color: #ffffff !important;
+    background: linear-gradient(120deg, #0284c7, #0ea5e9) !important;
+}
+
+.setup-swal-cancel {
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    background: color-mix(in srgb, var(--bg-primary) 85%, var(--bg-secondary)) !important;
+}
+
+.setup-swal-confirm:hover,
+.setup-swal-cancel:hover {
+    filter: brightness(1.02);
+}
+
+.setup-swal-actions {
+    gap: 0.35rem !important;
+}
+
 @media (max-width: 760px) {
     .setup-card {
         padding: 1.2rem;
@@ -322,6 +373,19 @@ main {
 
     .setup-footer .setup-btn {
         width: 100%;
+    }
+}
+
+@media (max-width: 520px) {
+    .setup-swal-actions {
+        flex-direction: column-reverse !important;
+        width: 100% !important;
+    }
+
+    .setup-swal-actions .setup-swal-confirm,
+    .setup-swal-actions .setup-swal-cancel {
+        width: 100% !important;
+        margin: 0 !important;
     }
 }
 
