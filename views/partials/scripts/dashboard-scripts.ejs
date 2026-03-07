@@ -44,6 +44,32 @@
             return getCurrentTheme() === 'dark' ? '#ffffff' : '#000000';
         }
 
+        function formatCompactTokenValue(value) {
+            const numericValue = Number(value || 0);
+            if (!Number.isFinite(numericValue)) {
+                return '0';
+            }
+
+            const absoluteValue = Math.abs(numericValue);
+            if (absoluteValue < 1000) {
+                return numericValue.toLocaleString();
+            }
+
+            const units = [
+                { threshold: 1000000000, suffix: 'b' },
+                { threshold: 1000000, suffix: 'm' },
+                { threshold: 1000, suffix: 'k' }
+            ];
+            const unit = units.find((entry) => absoluteValue >= entry.threshold) || units[units.length - 1];
+            const scaledValue = numericValue / unit.threshold;
+            const rounded = Math.round(scaledValue * 10) / 10;
+            const compactValue = Number.isInteger(rounded)
+                ? String(rounded)
+                : rounded.toFixed(1).replace(/\.0$/, '');
+
+            return `${compactValue}${unit.suffix}`;
+        }
+
         window.dashboardCharts = window.dashboardCharts || {};
         window.dashboardCharts.tokenDistribution = new Chart(document.getElementById('tokenDistribution'), {
             type: 'bar',
@@ -69,7 +95,7 @@
                             color: getAxisTextColor(),
                             stepSize: 1,
                             callback: function(value) {
-                                return Number.isInteger(value) ? value : null;
+                                return formatCompactTokenValue(value);
                             }
                         }
                     }
@@ -78,6 +104,14 @@
                     legend: {
                         labels: {
                             color: getAxisTextColor()
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const rawValue = context.raw;
+                                return `${context.dataset.label}: ${formatCompactTokenValue(rawValue)}`;
+                            }
                         }
                     }
                 }
@@ -138,7 +172,7 @@
                                 color: getAxisTextColor(),
                                 stepSize: 1,
                                 callback: function(value) {
-                                    return Number.isInteger(value) ? value : null;
+                                    return formatCompactTokenValue(value);
                                 }
                             }
                         }
@@ -146,6 +180,14 @@
                     plugins: {
                         legend: {
                             display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const rawValue = context.raw;
+                                    return `${context.dataset.label}: ${formatCompactTokenValue(rawValue)}`;
+                                }
+                            }
                         }
                     }
                 }

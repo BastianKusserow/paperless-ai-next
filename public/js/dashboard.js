@@ -274,8 +274,31 @@ class DashboardStatsLoader {
         });
     }
 
-    formatNumber(value) {
-        return Number(value || 0).toLocaleString();
+    formatNumber(value, options = {}) {
+        const numericValue = Number(value || 0);
+        if (!Number.isFinite(numericValue)) {
+            return '0';
+        }
+
+        if (!options.compact || Math.abs(numericValue) < 1000) {
+            return numericValue.toLocaleString();
+        }
+
+        const absoluteValue = Math.abs(numericValue);
+        const units = [
+            { threshold: 1000000000, suffix: 'b' },
+            { threshold: 1000000, suffix: 'm' },
+            { threshold: 1000, suffix: 'k' }
+        ];
+
+        const unit = units.find((entry) => absoluteValue >= entry.threshold) || units[units.length - 1];
+        const scaledValue = numericValue / unit.threshold;
+        const rounded = Math.round(scaledValue * 10) / 10;
+        const compactValue = Number.isInteger(rounded)
+            ? String(rounded)
+            : rounded.toFixed(1).replace(/\.0$/, '');
+
+        return `${compactValue}${unit.suffix}`;
     }
 
     setText(id, value) {
@@ -474,10 +497,10 @@ class DashboardStatsLoader {
         this.setText('totalTagsValue', this.formatNumber(stats.paperless_data.tagCount));
         this.setText('totalCorrespondentsValue', this.formatNumber(stats.paperless_data.correspondentCount));
 
-        this.setText('avgPromptTokensValue', this.formatNumber(stats.openai_data.averagePromptTokens));
-        this.setText('avgCompletionTokensValue', this.formatNumber(stats.openai_data.averageCompletionTokens));
-        this.setText('avgTotalTokensValue', this.formatNumber(stats.openai_data.averageTotalTokens));
-        this.setText('tokensOverallValue', this.formatNumber(stats.openai_data.tokensOverall));
+        this.setText('avgPromptTokensValue', this.formatNumber(stats.openai_data.averagePromptTokens, { compact: true }));
+        this.setText('avgCompletionTokensValue', this.formatNumber(stats.openai_data.averageCompletionTokens, { compact: true }));
+        this.setText('avgTotalTokensValue', this.formatNumber(stats.openai_data.averageTotalTokens, { compact: true }));
+        this.setText('tokensOverallValue', this.formatNumber(stats.openai_data.tokensOverall, { compact: true }));
         this.setText('documentsProcessedValue', this.formatNumber(processedCount));
 
         this.setText('efficiencyRateValue', `${efficiencyRate}%`);

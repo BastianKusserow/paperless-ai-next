@@ -229,6 +229,94 @@
         }
 
         getStarsCount();
+
+        const sidebarBugReportLink = document.getElementById('sidebarBugReportLink');
+        if (sidebarBugReportLink) {
+            const browserInfo = `${navigator.userAgent || 'unknown'}`;
+            const osGuess = navigator.platform || 'unknown';
+            const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+            const redactSecrets = (value) => {
+                if (value == null) {
+                    return 'unknown';
+                }
+
+                let text = String(value);
+                text = text.replace(
+                    /((?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD)[A-Z0-9_-]*\s*[:=]\s*)([^\n\r]+)/gi,
+                    '$1[REDACTED]'
+                );
+                text = text.replace(/(https?:\/\/)([^@\s]+)@/gi, '$1[REDACTED]@');
+
+                return text;
+            };
+
+            const keyState = (isSet) => (isSet ? '[REDACTED:SET]' : 'not_set');
+
+            const detectHostOs = () => {
+                const ua = `${navigator.userAgent || ''} ${navigator.platform || ''}`.toLowerCase();
+                if (ua.includes('win')) return 'Windows';
+                if (ua.includes('mac')) return 'macOS';
+                if (ua.includes('linux')) return 'Linux';
+                return 'Other';
+            };
+
+            const issueParams = new URLSearchParams({
+                template: 'bug_report.yml',
+                title: '[Bug]: ',
+                summary: 'Describe the issue in one sentence',
+                steps: '1.\n2.\n3.\n4.',
+                expected: 'Describe expected behavior',
+                actual: 'Describe actual behavior',
+                logs: 'Paste relevant Paperless-AI next logs here.\n\nExample:\n`docker logs paperless-ai-next-1 --tail=200`',
+                traceback: 'Paste browser console errors or stack trace here (if applicable).',
+                app_version: '<%= appVersion || "unknown" %>',
+                app_commit: '<%= appCommitSha || "unknown" %>',
+                paperless_ngx_version: '<%= appPaperlessNgxVersion || "unknown" %>',
+                deployment: 'Docker Compose',
+                os: detectHostOs(),
+                os_version: `${osGuess}`,
+                browser: browserInfo,
+                config_notes: redactSecrets([
+                    `AI_PROVIDER=<%= appAiProvider || "unknown" %>`,
+                    `RAG_SERVICE_ENABLED=<%= appRagEnabled ? "true" : "false" %>`,
+                    `MISTRAL_OCR_ENABLED=<%= appOcrEnabled ? "yes" : "no" %>`,
+                    `PAPERLESS_API_URL=<%= appPaperlessApiUrl || "unknown" %>`,
+                    `OLLAMA_API_URL=<%= appOllamaApiUrl || "unknown" %>`,
+                    `OLLAMA_MODEL=<%= appOllamaModel || "unknown" %>`,
+                    `CUSTOM_BASE_URL=<%= appCustomBaseUrl || "unknown" %>`,
+                    `CUSTOM_MODEL=<%= appCustomModel || "unknown" %>`,
+                    `AZURE_ENDPOINT=<%= appAzureEndpoint || "unknown" %>`,
+                    `AZURE_DEPLOYMENT_NAME=<%= appAzureDeploymentName || "unknown" %>`,
+                    `AZURE_API_VERSION=<%= appAzureApiVersion || "unknown" %>`,
+                    `MISTRAL_OCR_MODEL=<%= appMistralOcrModel || "unknown" %>`,
+                    `TRUST_PROXY=<%= appTrustProxy || "unknown" %>`,
+                    `USE_EXISTING_DATA=<%= appUseExistingData || "no" %>`,
+                    `RESTRICT_TO_EXISTING_TAGS=<%= appRestrictTags || "no" %>`,
+                    `RESTRICT_TO_EXISTING_CORRESPONDENTS=<%= appRestrictCorrespondents || "no" %>`,
+                    `RESTRICT_TO_EXISTING_DOCUMENT_TYPES=<%= appRestrictDocumentTypes || "no" %>`,
+                    `PAPERLESS_API_TOKEN=${keyState(<%= appPaperlessTokenSet ? "true" : "false" %>)}`,
+                    `OPENAI_API_KEY=${keyState(<%= appOpenAiKeySet ? "true" : "false" %>)}`,
+                    `CUSTOM_API_KEY=${keyState(<%= appCustomKeySet ? "true" : "false" %>)}`,
+                    `AZURE_API_KEY=${keyState(<%= appAzureKeySet ? "true" : "false" %>)}`,
+                    `MISTRAL_API_KEY=${keyState(<%= appMistralKeySet ? "true" : "false" %>)}`,
+                    `API_KEY=${keyState(<%= appApiKeySet ? "true" : "false" %>)}`
+                ].join('\n')),
+                extra: redactSecrets([
+                    `Node=<%= appNodeVersion || "unknown" %>`,
+                    `NodeEnv=<%= appNodeEnv || "unknown" %>`,
+                    `Platform=<%= appPlatform || "unknown" %>`,
+                    `Timezone=${timezone}`,
+                    `ServerTimeUTC=<%= appServerTimeUtc || "unknown" %>`,
+                    `ServerTimezone=<%= appServerTimezone || "unknown" %>`,
+                    `ScanInterval=<%= appScanInterval || "unknown" %>`,
+                    `TokenLimit=<%= appTokenLimit || "unknown" %>`,
+                    `ResponseTokens=<%= appResponseTokens || "unknown" %>`
+                ].join('\n'))
+            });
+
+            sidebarBugReportLink.href = `https://github.com/admonstrator/paperless-ai-next/issues/new?${issueParams.toString()}`;
+        }
     });
 </script>
 <script src="/js/sidebar-badges.js"></script>

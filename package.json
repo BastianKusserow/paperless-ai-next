@@ -7,7 +7,8 @@
     "test": "nodemon server.js",
     "docs:dev": "astro dev --host",
     "docs:build": "astro build",
-    "docs:preview": "astro preview --host"
+    "docs:preview": "astro preview --host",
+    "mfa:reset": "node scripts/mfa-reset.js"
   },
   "keywords": [
     "paperless-ngx",
@@ -60,6 +61,7 @@
     "node-cron": "^3.0.3",
     "nodemon": "^3.1.9",
     "openai": "^4.86.2",
+    "qrcode": "^1.5.4",
     "rimraf": "^6.0.1",
     "shepherd.js": "^10.0.1",
     "sortablejs": "^1.15.6",

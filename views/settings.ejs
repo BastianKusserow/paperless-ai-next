@@ -70,6 +70,13 @@
             color: var(--text-primary);
         }
 
+        .settings-section-card {
+            border: 1px solid var(--stats-border);
+            background-color: var(--stat-box-bg);
+            border-radius: 0.75rem;
+            padding: 1rem;
+        }
+
         .restart-overlay {
             background: rgba(15, 23, 42, 0.74);
             backdrop-filter: blur(6px);
@@ -152,6 +159,10 @@
                                     <i class="fas fa-robot"></i>
                                     AI
                                 </button>
+                                <button type="button" class="settings-tab-button flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 border-transparent" data-tab="mfa-tab">
+                                    <i class="fas fa-shield"></i>
+                                    MFA
+                                </button>
                                 <button type="button" class="settings-tab-button flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 border-transparent" data-tab="ocr-tab">
                                     <i class="fas fa-file-invoice"></i>
                                     OCR
@@ -164,7 +175,7 @@
                         </div>
 
                         <div id="system-tab" class="settings-tab-content space-y-6">
-                            <section class="space-y-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">Connection</h3>
                                 <div class="space-y-2">
                                     <label for="paperlessUrl" class="flex items-center gap-2 text-sm font-medium">
@@ -212,7 +223,7 @@
                                 </div>
                             </section>
 
-                            <section class="space-y-4 border-t pt-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">Processing</h3>
                                 <div class="space-y-2">
                                     <label for="scanInterval" class="text-sm font-medium">Scan Interval (Cron Format)</label>
@@ -300,10 +311,91 @@
                                     <p class="text-xs text-gray-500">ENV: DISABLE_AUTOMATIC_PROCESSING · Restart required</p>
                                 </div>
                             </section>
+
+                        </div>
+
+                        <div id="mfa-tab" class="settings-tab-content space-y-6 hidden">
+                            <section class="space-y-4 settings-section-card" id="mfaSettingsSection" data-mfa-available="<%= mfaSettings && mfaSettings.available ? 'yes' : 'no' %>" data-mfa-enabled="<%= mfaSettings && mfaSettings.enabled ? 'yes' : 'no' %>" data-mfa-username="<%= mfaSettings && mfaSettings.username ? mfaSettings.username : '' %>">
+                                <h3 class="text-lg font-semibold">Account Security (TOTP)</h3>
+
+                                <% if (!(mfaSettings && mfaSettings.available)) { %>
+                                    <div class="theme-alert-warning border rounded-lg p-4 text-sm">
+                                        MFA controls are available only for interactive user sessions (not API key authentication).
+                                    </div>
+                                <% } else { %>
+                                    <div class="space-y-4">
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <div>
+                                                <p class="text-sm font-medium">User: <span id="mfaSettingsUser"><%= mfaSettings.username %></span></p>
+                                                <p class="text-xs text-gray-500">Configure two-factor authentication for this account.</p>
+                                            </div>
+                                            <span id="mfaStatusBadge" class="px-2 py-1 rounded-full text-xs font-semibold <%= mfaSettings.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700' %>">
+                                                <%= mfaSettings.enabled ? 'Enabled' : 'Disabled' %>
+                                            </span>
+                                        </div>
+
+                                        <div class="space-y-2">
+                                            <label for="mfaCurrentPassword" class="text-sm font-medium">Current Password</label>
+                                            <input type="password" id="mfaCurrentPassword" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Enter current password">
+                                            <p class="text-xs text-gray-500">Required to start activation and to disable MFA.</p>
+                                        </div>
+
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <button type="button" id="mfaEnableBtn" class="toolbar-btn toolbar-btn--primary flex items-center justify-center gap-2">
+                                                <i class="fas fa-key"></i>
+                                                <span>Enable MFA</span>
+                                            </button>
+                                            <button type="button" id="mfaDisableBtn" class="toolbar-btn toolbar-btn--danger flex items-center justify-center gap-2">
+                                                <i class="fas fa-shield"></i>
+                                                <span>Disable MFA</span>
+                                            </button>
+                                        </div>
+
+                                        <div id="mfaProvisioningBox" class="space-y-3 p-3 border rounded-lg hidden">
+                                            <div class="flex justify-center">
+                                                <img id="mfaQrImage" class="w-44 h-44 rounded border border-gray-200 bg-white p-2 hidden" alt="MFA provisioning QR code" />
+                                            </div>
+                                            <div class="space-y-1">
+                                                <label for="mfaSecretKey" class="text-sm font-medium">Secret Key</label>
+                                                <input type="text" id="mfaSecretKey" class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50" readonly>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <label for="mfaOtpAuthUri" class="text-sm font-medium">OTP URI</label>
+                                                <textarea id="mfaOtpAuthUri" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-xs" readonly></textarea>
+                                            </div>
+                                            <div class="flex flex-col sm:flex-row gap-2">
+                                                <button type="button" id="mfaCopySecretBtn" class="toolbar-btn flex items-center justify-center gap-2">
+                                                    <i class="fas fa-copy"></i>
+                                                    <span>Copy Secret</span>
+                                                </button>
+                                                <button type="button" id="mfaDownloadQrBtn" class="toolbar-btn flex items-center justify-center gap-2">
+                                                    <i class="fas fa-download"></i>
+                                                    <span>Download QR</span>
+                                                </button>
+                                            </div>
+                                            <p class="text-xs text-gray-500">Use either the key or URI in your authenticator app, then enter a code below.</p>
+                                        </div>
+
+                                        <div class="space-y-2">
+                                            <label for="mfaToken" class="text-sm font-medium">Authenticator Code</label>
+                                            <div class="flex flex-col sm:flex-row gap-2">
+                                                <input type="text" id="mfaToken" inputmode="numeric" autocomplete="one-time-code" class="flex-1 px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Enter 6-digit code">
+                                                <button type="button" id="mfaVerifyBtn" class="toolbar-btn toolbar-btn--warning flex items-center justify-center gap-2">
+                                                    <i class="fas fa-vial"></i>
+                                                    <span id="mfaVerifyBtnLabel">Validate & Activate</span>
+                                                </button>
+                                            </div>
+                                            <p id="mfaTokenHint" class="hidden text-xs"></p>
+                                        </div>
+
+                                        <div id="mfaResultMessage" class="hidden rounded-lg p-3 text-sm"></div>
+                                    </div>
+                                <% } %>
+                            </section>
                         </div>
 
                         <div id="ai-tab" class="settings-tab-content space-y-6 hidden">
-                            <section class="space-y-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">Provider</h3>
                                 <div class="space-y-2">
                                     <label for="aiProvider" class="text-sm font-medium">AI Provider</label>
@@ -397,7 +489,7 @@
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="space-y-2">
                                         <label for="tokenLimit" class="text-sm font-medium">Token Limit</label>
                                         <input type="number" id="tokenLimit" name="tokenLimit" value="<%= config.TOKEN_LIMIT %>" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
@@ -411,7 +503,7 @@
                                 </div>
                             </section>
 
-                            <section class="space-y-4 border-t pt-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">AI Behavior</h3>
                                 <div class="space-y-2">
                                     <label for="aiProcessedTag" class="text-sm font-medium">Add AI-processed tag to documents</label>
@@ -469,7 +561,7 @@
                                 </div>
                             </section>
 
-                            <section class="space-y-4 border-t pt-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">Restrictions & External API</h3>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <label for="restrictToExistingTags" class="flex items-center gap-3 border rounded-lg p-3 cursor-pointer">
@@ -525,7 +617,7 @@
                                 </div>
                             </section>
 
-                            <section class="space-y-4 border-t pt-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">AI Function Limits</h3>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <label for="activateTagging" class="flex items-center gap-3 border rounded-lg p-3 cursor-pointer"><input type="checkbox" id="activateTagging" name="activateTagging" class="w-5 h-5" <%= config.ACTIVATE_TAGGING === 'yes' ? 'checked' : '' %>><span>Tags Assignment</span></label>
@@ -537,7 +629,7 @@
                                 <p class="text-xs text-gray-500">ENV: ACTIVATE_* · Restart required</p>
                             </section>
 
-                            <section class="space-y-4 border-t pt-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">Custom Fields</h3>
                                 <div id="customFieldsList" class="space-y-2">
                                     <% if (config.CUSTOM_FIELDS && Array.isArray(JSON.parse(config.CUSTOM_FIELDS).custom_fields)) { %>
@@ -583,7 +675,7 @@
                         </div>
 
                         <div id="ocr-tab" class="settings-tab-content space-y-6 hidden">
-                            <section class="space-y-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">Mistral OCR</h3>
                                 <div class="space-y-2">
                                     <label for="mistralOcrEnabled" class="text-sm font-medium">Enable Mistral OCR fallback</label>
@@ -610,7 +702,7 @@
                         </div>
 
                         <div id="troubleshooting-tab" class="settings-tab-content space-y-6 hidden">
-                            <section class="space-y-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">Caching & RAG</h3>
                                 <div class="space-y-2">
                                     <label for="tagCacheTTL" class="text-sm font-medium flex items-center gap-2">
@@ -627,7 +719,7 @@
                                     <span>Clear Tag Cache Now</span>
                                 </button>
 
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 border-t pt-4">
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div class="space-y-2">
                                         <label for="ragServiceEnabled" class="text-sm font-medium">Enable RAG service routes</label>
                                         <select id="ragServiceEnabled" name="ragServiceEnabled" class="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
@@ -655,7 +747,7 @@
                                 <% } %>
                             </section>
 
-                            <section class="space-y-4 border-t pt-4">
+                            <section class="space-y-4 settings-section-card">
                                 <h3 class="text-lg font-semibold">Runtime Controls</h3>
                                 <div class="space-y-2">
                                     <p class="text-sm text-gray-600">Reset local runtime overrides to fall back to your container-injected environment values on next restart.</p>
