@@ -1432,10 +1432,10 @@ class MfaSettingsManager {
         this.qrImage = document.getElementById('mfaQrImage');
         this.provisioningBox = document.getElementById('mfaProvisioningBox');
         this.resultMessage = document.getElementById('mfaResultMessage');
+        this.verifyBtnLabel = document.getElementById('mfaVerifyBtnLabel');
         this.copySecretBtn = document.getElementById('mfaCopySecretBtn');
         this.downloadQrBtn = document.getElementById('mfaDownloadQrBtn');
 
-        this.startSetupBtn = document.getElementById('mfaStartSetupBtn');
         this.enableBtn = document.getElementById('mfaEnableBtn');
         this.verifyBtn = document.getElementById('mfaVerifyBtn');
         this.disableBtn = document.getElementById('mfaDisableBtn');
@@ -1450,7 +1450,6 @@ class MfaSettingsManager {
             return;
         }
 
-        this.startSetupBtn?.addEventListener('click', () => this.startSetup());
         this.enableBtn?.addEventListener('click', () => this.enableMfa());
         this.verifyBtn?.addEventListener('click', () => this.verifyCode());
         this.disableBtn?.addEventListener('click', () => this.disableMfa());
@@ -1522,7 +1521,15 @@ class MfaSettingsManager {
         }
 
         if (this.enableBtn) {
-            this.enableBtn.disabled = this.enabled || !this.setupReady;
+            this.enableBtn.disabled = this.enabled;
+        }
+
+        if (this.verifyBtn) {
+            this.verifyBtn.disabled = !this.enabled && !this.setupReady;
+        }
+
+        if (this.verifyBtnLabel) {
+            this.verifyBtnLabel.textContent = this.enabled ? 'Validate Code' : 'Validate & Activate';
         }
 
         if (this.provisioningBox) {
@@ -1591,7 +1598,7 @@ class MfaSettingsManager {
             return;
         }
 
-        this.setLoading(this.startSetupBtn, true, 'Starting...');
+        this.setLoading(this.enableBtn, true, 'Starting...');
         try {
             const result = await this.request('/api/settings/mfa/setup', {
                 currentPassword: password
@@ -1608,53 +1615,13 @@ class MfaSettingsManager {
                 this.qrImage.classList.toggle('hidden', !result.qrDataUrl);
             }
             this.setupReady = true;
-            this.setMessage('info', 'Setup started. Add the secret in your authenticator and enter a code to enable MFA.');
+            this.setMessage('info', 'Setup started. Scan the QR code and then use Validate & Activate with your code.');
         } catch (error) {
             this.setupReady = false;
             if (this.qrImage) {
                 this.qrImage.removeAttribute('src');
                 this.qrImage.classList.add('hidden');
             }
-            this.setMessage('error', error.message);
-        } finally {
-            this.setLoading(this.startSetupBtn, false);
-            this.renderState();
-        }
-    }
-
-    async enableMfa() {
-        const password = this.getCurrentPassword();
-        const token = this.getCurrentToken();
-        this.clearMessage();
-
-        if (!password || !token) {
-            this.setMessage('error', 'Current password and authenticator code are required.');
-            return;
-        }
-
-        this.setLoading(this.enableBtn, true, 'Enabling...');
-        try {
-            const result = await this.request('/api/settings/mfa/enable', {
-                currentPassword: password,
-                token
-            });
-            this.enabled = true;
-            this.setupReady = false;
-            if (this.secretInput) {
-                this.secretInput.value = '';
-            }
-            if (this.uriInput) {
-                this.uriInput.value = '';
-            }
-            if (this.qrImage) {
-                this.qrImage.removeAttribute('src');
-                this.qrImage.classList.add('hidden');
-            }
-            if (this.tokenInput) {
-                this.tokenInput.value = '';
-            }
-            this.setMessage('success', result.message || 'MFA enabled successfully.');
-        } catch (error) {
             this.setMessage('error', error.message);
         } finally {
             this.setLoading(this.enableBtn, false);
@@ -1662,7 +1629,12 @@ class MfaSettingsManager {
         }
     }
 
+    async enableMfa() {
+        await this.startSetup();
+    }
+
     async verifyCode() {
+        const password = this.getCurrentPassword();
         const token = this.getCurrentToken();
         this.clearMessage();
 
@@ -1671,10 +1643,43 @@ class MfaSettingsManager {
             return;
         }
 
+        if (!this.enabled && !this.setupReady) {
+            this.setMessage('error', 'Click Enable MFA first to start setup and generate a QR code.');
+            return;
+        }
+
         this.setLoading(this.verifyBtn, true, 'Validating...');
         try {
-            const result = await this.request('/api/settings/mfa/verify', { token });
-            this.setMessage('success', result.message || 'Authentication code is valid.');
+            if (!this.enabled) {
+                if (!password) {
+                    this.setMessage('error', 'Enter your current password to complete activation.');
+                    return;
+                }
+
+                const result = await this.request('/api/settings/mfa/enable', {
+                    currentPassword: password,
+                    token
+                });
+                this.enabled = true;
+                this.setupReady = false;
+                if (this.secretInput) {
+                    this.secretInput.value = '';
+                }
+                if (this.uriInput) {
+                    this.uriInput.value = '';
+                }
+                if (this.qrImage) {
+                    this.qrImage.removeAttribute('src');
+                    this.qrImage.classList.add('hidden');
+                }
+                if (this.tokenInput) {
+                    this.tokenInput.value = '';
+                }
+                this.setMessage('success', result.message || 'MFA enabled successfully.');
+            } else {
+                const result = await this.request('/api/settings/mfa/verify', { token });
+                this.setMessage('success', result.message || 'Authentication code is valid.');
+            }
         } catch (error) {
             this.setMessage('error', error.message);
         } finally {
