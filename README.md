@@ -142,6 +142,8 @@ Then open [http://localhost:3000](http://localhost:3000) to complete setup.
 
 **Docker Hub:** [admonstrator/paperless-ai-next](https://hub.docker.com/r/admonstrator/paperless-ai-next)
 
+Versioned release tags use the format `vYYYY.MM.##` (example: `v2026.03.01`, plus `-lite`/`-full` variants).
+
 ---
 
 ## ℹ️ More

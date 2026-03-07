@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to remove (e.g. v2026-03-05-01 or 2026-03-05-01)'
+        description: 'Version to remove (e.g. v2026.03.01 or 2026.03.01; legacy v2026-03-05-01 also works)'
         required: true
         type: string
       delete_github_release:
