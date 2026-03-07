@@ -6,6 +6,11 @@ on:
   workflow_dispatch: # Manually triggered
   schedule:
     - cron: '0 0 * * 0' # Run weekly on Sunday at midnight
+  push:
+    branches:
+      - main
+    paths:
+      - "./readme.template.md" 
 
 jobs:
   update-badges:
