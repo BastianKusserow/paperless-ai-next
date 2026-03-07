@@ -20,6 +20,33 @@
 		const osGuess = navigator.platform || 'unknown';
 		const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
+		const redactSecrets = (value) => {
+			if (value == null) {
+				return 'unknown';
+			}
+
+			let text = String(value);
+			text = text.replace(
+				/((?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD)[A-Z0-9_-]*\s*[:=]\s*)([^\n\r]+)/gi,
+				'$1[REDACTED]'
+			);
+
+			// Mask credentials in URLs like https://user:pass@example.com
+			text = text.replace(/(https?:\/\/)([^@\s]+)@/gi, '$1[REDACTED]@');
+
+			return text;
+		};
+
+		const keyState = (isSet) => (isSet ? '[REDACTED:SET]' : 'not_set');
+
+		const detectHostOs = () => {
+			const ua = `${navigator.userAgent || ''} ${navigator.platform || ''}`.toLowerCase();
+			if (ua.includes('win')) return 'Windows';
+			if (ua.includes('mac')) return 'macOS';
+			if (ua.includes('linux')) return 'Linux';
+			return 'Other';
+		};
+
 		const issueParams = new URLSearchParams({
 			template: 'bug_report.yml',
 			title: '[Bug]: ',
@@ -27,14 +54,51 @@
 			steps: '1.\n2.\n3.\n4.',
 			expected: 'Describe expected behavior',
 			actual: 'Describe actual behavior',
+			logs: 'Paste relevant Paperless-AI next logs here.\n\nExample:\n`docker logs paperless-ai-next-1 --tail=200`',
+			traceback: 'Paste browser console errors or stack trace here (if applicable).',
 			app_version: supportInfo.appVersion || 'unknown',
 			app_commit: supportInfo.commitSha || 'unknown',
+			paperless_ngx_version: supportInfo.paperlessNgxVersion || 'unknown',
 			deployment: 'Docker Compose',
-			os: 'Linux',
+			os: detectHostOs(),
 			os_version: `${osGuess}`,
 			browser: browserInfo,
-			config_notes: `AI_PROVIDER=${supportInfo.aiProvider || 'unknown'}\nRAG_SERVICE_ENABLED=${supportInfo.ragEnabled ? 'true' : 'false'}\nMISTRAL_OCR_ENABLED=${supportInfo.ocrEnabled ? 'yes' : 'no'}`,
-			extra: `Node=${supportInfo.nodeVersion || 'unknown'}\nPlatform=${supportInfo.platform || 'unknown'}\nTimezone=${timezone}\nServerTimeUTC=${supportInfo.serverTimeUtc || 'unknown'}`
+			config_notes: redactSecrets([
+				`AI_PROVIDER=${supportInfo.aiProvider || 'unknown'}`,
+				`RAG_SERVICE_ENABLED=${supportInfo.ragEnabled ? 'true' : 'false'}`,
+				`MISTRAL_OCR_ENABLED=${supportInfo.ocrEnabled ? 'yes' : 'no'}`,
+				`PAPERLESS_API_URL=${supportInfo.paperlessApiUrl || 'unknown'}`,
+				`OLLAMA_API_URL=${supportInfo.ollamaApiUrl || 'unknown'}`,
+				`OLLAMA_MODEL=${supportInfo.ollamaModel || 'unknown'}`,
+				`CUSTOM_BASE_URL=${supportInfo.customBaseUrl || 'unknown'}`,
+				`CUSTOM_MODEL=${supportInfo.customModel || 'unknown'}`,
+				`AZURE_ENDPOINT=${supportInfo.azureEndpoint || 'unknown'}`,
+				`AZURE_DEPLOYMENT_NAME=${supportInfo.azureDeploymentName || 'unknown'}`,
+				`AZURE_API_VERSION=${supportInfo.azureApiVersion || 'unknown'}`,
+				`MISTRAL_OCR_MODEL=${supportInfo.mistralOcrModel || 'unknown'}`,
+				`TRUST_PROXY=${supportInfo.trustProxy || 'unknown'}`,
+				`USE_EXISTING_DATA=${supportInfo.useExistingData || 'no'}`,
+				`RESTRICT_TO_EXISTING_TAGS=${supportInfo.restrictToExistingTags || 'no'}`,
+				`RESTRICT_TO_EXISTING_CORRESPONDENTS=${supportInfo.restrictToExistingCorrespondents || 'no'}`,
+				`RESTRICT_TO_EXISTING_DOCUMENT_TYPES=${supportInfo.restrictToExistingDocumentTypes || 'no'}`,
+				`PAPERLESS_API_TOKEN=${keyState(supportInfo.paperlessTokenSet)}`,
+				`OPENAI_API_KEY=${keyState(supportInfo.openAiKeySet)}`,
+				`CUSTOM_API_KEY=${keyState(supportInfo.customKeySet)}`,
+				`AZURE_API_KEY=${keyState(supportInfo.azureKeySet)}`,
+				`MISTRAL_API_KEY=${keyState(supportInfo.mistralKeySet)}`,
+				`API_KEY=${keyState(supportInfo.apiKeySet)}`
+			].join('\n')),
+			extra: redactSecrets([
+				`Node=${supportInfo.nodeVersion || 'unknown'}`,
+				`NodeEnv=${supportInfo.nodeEnv || 'unknown'}`,
+				`Platform=${supportInfo.platform || 'unknown'}`,
+				`Timezone=${timezone}`,
+				`ServerTimeUTC=${supportInfo.serverTimeUtc || 'unknown'}`,
+				`ServerTimezone=${supportInfo.timezone || 'unknown'}`,
+				`ScanInterval=${supportInfo.scanInterval || 'unknown'}`,
+				`TokenLimit=${supportInfo.tokenLimit || 'unknown'}`,
+				`ResponseTokens=${supportInfo.responseTokens || 'unknown'}`
+			].join('\n'))
 		});
 
 		openPrefilledIssueBtn.href = `https://github.com/admonstrator/paperless-ai-next/issues/new?${issueParams.toString()}`;
@@ -48,6 +112,7 @@
 				'Paperless-AI next diagnostics',
 				`App Version: ${supportInfo.appVersion || 'unknown'}`,
 				`Commit SHA: ${supportInfo.commitSha || 'unknown'}`,
+				`Paperless-ngx Version: ${supportInfo.paperlessNgxVersion || 'unknown'}`,
 				`Node.js: ${supportInfo.nodeVersion || 'unknown'}`,
 				`Platform: ${supportInfo.platform || 'unknown'}`,
 				`Environment: ${supportInfo.nodeEnv || 'unknown'}`,
@@ -55,6 +120,25 @@
 				`RAG Enabled: ${supportInfo.ragEnabled ? 'yes' : 'no'}`,
 				`Chat Enabled: ${supportInfo.chatEnabled ? 'yes' : 'no'}`,
 				`Mistral OCR Enabled: ${supportInfo.ocrEnabled ? 'yes' : 'no'}`,
+				`Paperless API URL: ${redactSecrets(supportInfo.paperlessApiUrl || 'unknown')}`,
+				`Ollama API URL: ${redactSecrets(supportInfo.ollamaApiUrl || 'unknown')}`,
+				`Ollama Model: ${supportInfo.ollamaModel || 'unknown'}`,
+				`Custom Base URL: ${redactSecrets(supportInfo.customBaseUrl || 'unknown')}`,
+				`Custom Model: ${supportInfo.customModel || 'unknown'}`,
+				`Azure Endpoint: ${redactSecrets(supportInfo.azureEndpoint || 'unknown')}`,
+				`Azure Deployment: ${supportInfo.azureDeploymentName || 'unknown'}`,
+				`Azure API Version: ${supportInfo.azureApiVersion || 'unknown'}`,
+				`Mistral OCR Model: ${supportInfo.mistralOcrModel || 'unknown'}`,
+				`Scan Interval: ${supportInfo.scanInterval || 'unknown'}`,
+				`Token Limit: ${supportInfo.tokenLimit || 'unknown'}`,
+				`Response Tokens: ${supportInfo.responseTokens || 'unknown'}`,
+				`Trust Proxy: ${supportInfo.trustProxy || 'unknown'}`,
+				`OpenAI API Key: ${keyState(supportInfo.openAiKeySet)}`,
+				`Custom API Key: ${keyState(supportInfo.customKeySet)}`,
+				`Azure API Key: ${keyState(supportInfo.azureKeySet)}`,
+				`Mistral API Key: ${keyState(supportInfo.mistralKeySet)}`,
+				`Paperless API Token: ${keyState(supportInfo.paperlessTokenSet)}`,
+				`App API Key: ${keyState(supportInfo.apiKeySet)}`,
 				`Server Time (UTC): ${supportInfo.serverTimeUtc || 'unknown'}`,
 				`Server Timezone: ${supportInfo.timezone || 'unknown'}`,
 				`Host Browser: ${browserInfo}`,

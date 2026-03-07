@@ -6439,6 +6439,7 @@ router.get('/about', protectApiRoute, async (req, res) => {
     const supportInfo = {
       appVersion: configFile.PAPERLESS_AI_VERSION || 'unknown',
       commitSha: process.env.PAPERLESS_AI_COMMIT_SHA || 'unknown',
+      paperlessNgxVersion: process.env.PAPERLESS_NGX_VERSION || 'unknown',
       nodeVersion: process.version,
       platform: `${process.platform} (${process.arch})`,
       nodeEnv: process.env.NODE_ENV || 'production',
@@ -6448,7 +6449,30 @@ router.get('/about', protectApiRoute, async (req, res) => {
       ocrEnabled: configFile.mistralOcr?.enabled === 'yes',
       serverTimeUtc: new Date().toISOString(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-      uptime: formatUptime(Math.floor(process.uptime()))
+      uptime: formatUptime(Math.floor(process.uptime())),
+      paperlessApiUrl: configFile.paperless?.apiUrl || 'unknown',
+      ollamaApiUrl: configFile.ollama?.apiUrl || 'unknown',
+      ollamaModel: configFile.ollama?.model || 'unknown',
+      customBaseUrl: configFile.custom?.apiUrl || 'unknown',
+      customModel: configFile.custom?.model || 'unknown',
+      azureEndpoint: configFile.azure?.endpoint || 'unknown',
+      azureDeploymentName: configFile.azure?.deploymentName || 'unknown',
+      azureApiVersion: configFile.azure?.apiVersion || 'unknown',
+      mistralOcrModel: configFile.mistralOcr?.model || 'unknown',
+      scanInterval: configFile.scanInterval || 'unknown',
+      tokenLimit: String(configFile.tokenLimit || 'unknown'),
+      responseTokens: String(configFile.responseTokens || 'unknown'),
+      trustProxy: String(configFile.trustProxy),
+      useExistingData: configFile.useExistingData || 'no',
+      restrictToExistingTags: configFile.restrictToExistingTags || 'no',
+      restrictToExistingCorrespondents: configFile.restrictToExistingCorrespondents || 'no',
+      restrictToExistingDocumentTypes: configFile.restrictToExistingDocumentTypes || 'no',
+      paperlessTokenSet: Boolean(configFile.paperless?.apiToken),
+      openAiKeySet: Boolean(configFile.openai?.apiKey),
+      customKeySet: Boolean(configFile.custom?.apiKey),
+      azureKeySet: Boolean(configFile.azure?.apiKey),
+      mistralKeySet: Boolean(configFile.mistralOcr?.apiKey),
+      apiKeySet: Boolean(configFile.getApiKey && configFile.getApiKey())
     };
 
     return res.render('about', {
@@ -6466,6 +6490,7 @@ router.get('/about', protectApiRoute, async (req, res) => {
       supportInfo: {
         appVersion: configFile.PAPERLESS_AI_VERSION || 'unknown',
         commitSha: process.env.PAPERLESS_AI_COMMIT_SHA || 'unknown',
+        paperlessNgxVersion: process.env.PAPERLESS_NGX_VERSION || 'unknown',
         nodeVersion: process.version,
         platform: `${process.platform} (${process.arch})`,
         nodeEnv: process.env.NODE_ENV || 'production',
@@ -6475,7 +6500,30 @@ router.get('/about', protectApiRoute, async (req, res) => {
         ocrEnabled: configFile.mistralOcr?.enabled === 'yes',
         serverTimeUtc: new Date().toISOString(),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-        uptime: 'unavailable'
+        uptime: 'unavailable',
+        paperlessApiUrl: configFile.paperless?.apiUrl || 'unknown',
+        ollamaApiUrl: configFile.ollama?.apiUrl || 'unknown',
+        ollamaModel: configFile.ollama?.model || 'unknown',
+        customBaseUrl: configFile.custom?.apiUrl || 'unknown',
+        customModel: configFile.custom?.model || 'unknown',
+        azureEndpoint: configFile.azure?.endpoint || 'unknown',
+        azureDeploymentName: configFile.azure?.deploymentName || 'unknown',
+        azureApiVersion: configFile.azure?.apiVersion || 'unknown',
+        mistralOcrModel: configFile.mistralOcr?.model || 'unknown',
+        scanInterval: configFile.scanInterval || 'unknown',
+        tokenLimit: String(configFile.tokenLimit || 'unknown'),
+        responseTokens: String(configFile.responseTokens || 'unknown'),
+        trustProxy: String(configFile.trustProxy),
+        useExistingData: configFile.useExistingData || 'no',
+        restrictToExistingTags: configFile.restrictToExistingTags || 'no',
+        restrictToExistingCorrespondents: configFile.restrictToExistingCorrespondents || 'no',
+        restrictToExistingDocumentTypes: configFile.restrictToExistingDocumentTypes || 'no',
+        paperlessTokenSet: Boolean(configFile.paperless?.apiToken),
+        openAiKeySet: Boolean(configFile.openai?.apiKey),
+        customKeySet: Boolean(configFile.custom?.apiKey),
+        azureKeySet: Boolean(configFile.azure?.apiKey),
+        mistralKeySet: Boolean(configFile.mistralOcr?.apiKey),
+        apiKeySet: Boolean(configFile.getApiKey && configFile.getApiKey())
       }
     });
   }
