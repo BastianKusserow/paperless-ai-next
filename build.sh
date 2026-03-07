@@ -6,6 +6,7 @@ cd "$SCRIPT_DIR"
 
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 IMAGE_REPO="${IMAGE_REPO:-${LOCAL_NAMESPACE:-docker.io/library/paperless-ai-next}}"
+FORCE_REBUILD="${FORCE_REBUILD:-false}"
 
 BASE_FULL_IMAGE="${BASE_FULL_IMAGE:-${IMAGE_REPO}:latest-base-full}"
 BASE_LITE_IMAGE="${BASE_LITE_IMAGE:-${IMAGE_REPO}:latest-base-lite}"
@@ -18,6 +19,24 @@ else
   COMMIT_SHA="unknown"
 fi
 
+BUILD_FLAGS=()
+
+refresh_build_flags() {
+  BUILD_FLAGS=()
+  if [[ "$FORCE_REBUILD" == "true" ]]; then
+    BUILD_FLAGS+=(--no-cache --pull)
+  fi
+}
+
+toggle_force_rebuild() {
+  if [[ "$FORCE_REBUILD" == "true" ]]; then
+    FORCE_REBUILD="false"
+  else
+    FORCE_REBUILD="true"
+  fi
+  refresh_build_flags
+}
+
 print_header() {
   echo
   echo "=============================================="
@@ -28,6 +47,7 @@ print_header() {
   echo " App full : ${APP_FULL_IMAGE}"
   echo " App lite : ${APP_LITE_IMAGE}"
   echo " Commit   : ${COMMIT_SHA}"
+  echo " Cache    : $([[ "$FORCE_REBUILD" == "true" ]] && echo "force rebuild (--no-cache --pull)" || echo "normal build")"
   echo
 }
 
@@ -46,6 +66,7 @@ ensure_docker() {
 build_base_full() {
   echo "\n[1/1] Building full base image: ${BASE_FULL_IMAGE}"
   "$DOCKER_BIN" build \
+    "${BUILD_FLAGS[@]}" \
     -f Dockerfile.base.full \
     -t "${BASE_FULL_IMAGE}" \
     .
@@ -55,6 +76,7 @@ build_base_full() {
 build_base_lite() {
   echo "\n[1/1] Building lite base image: ${BASE_LITE_IMAGE}"
   "$DOCKER_BIN" build \
+    "${BUILD_FLAGS[@]}" \
     -f Dockerfile.base.lite \
     -t "${BASE_LITE_IMAGE}" \
     .
@@ -64,6 +86,7 @@ build_base_lite() {
 build_app_full() {
   echo "\n[1/1] Building full app image: ${APP_FULL_IMAGE}"
   "$DOCKER_BIN" build \
+    "${BUILD_FLAGS[@]}" \
     -f Dockerfile \
     --build-arg BASE_IMAGE="${BASE_FULL_IMAGE}" \
     --build-arg PAPERLESS_AI_COMMIT_SHA="${COMMIT_SHA}" \
@@ -75,6 +98,7 @@ build_app_full() {
 build_app_lite() {
   echo "\n[1/1] Building lite app image: ${APP_LITE_IMAGE}"
   "$DOCKER_BIN" build \
+    "${BUILD_FLAGS[@]}" \
     -f Dockerfile.lite \
     --build-arg BASE_IMAGE="${BASE_LITE_IMAGE}" \
     --build-arg PAPERLESS_AI_COMMIT_SHA="${COMMIT_SHA}" \
@@ -161,6 +185,7 @@ run_action() {
       while true; do
         print_header
         echo "Select build target:"
+        echo "  0) Toggle force rebuild without cache"
         echo "  1) Build base image (full)"
         echo "  2) Build base image (lite)"
         echo "  3) Build base images (full + lite)"
@@ -170,9 +195,10 @@ run_action() {
         echo "  7) Build everything (base + app)"
         echo "  8) Show docker-compose usage"
         echo "  9) Exit"
-        read -r -p "Choice [1-9]: " choice
+        read -r -p "Choice [0-9]: " choice
 
         case "$choice" in
+          0) toggle_force_rebuild ;;
           1) build_base_full ;;
           2) build_base_lite ;;
           3) build_base_full; build_base_lite ;;
@@ -196,11 +222,13 @@ Unknown argument: ${action}
 Usage:
   ./build.sh               # interactive menu
   ./build.sh menu
+  ./build.sh --no-cache menu
   ./build.sh base-full|base-lite|base-all
   ./build.sh app-full|app-lite|app-all
   ./build.sh all
 
 Optional overrides:
+  FORCE_REBUILD=true ./build.sh all
   IMAGE_REPO=docker.io/library/myrepo ./build.sh all
   LOCAL_NAMESPACE=myrepo ./build.sh all
   BASE_FULL_IMAGE=my/base:full BASE_LITE_IMAGE=my/base:lite ./build.sh base-all
@@ -212,4 +240,25 @@ EOF
 }
 
 ensure_docker
-run_action "${1:-menu}"
+
+ACTION="menu"
+for arg in "$@"; do
+  case "$arg" in
+    --no-cache)
+      FORCE_REBUILD="true"
+      ;;
+    --cache)
+      FORCE_REBUILD="false"
+      ;;
+    menu|base-full|base-lite|base-all|app-full|app-lite|app-all|all)
+      ACTION="$arg"
+      ;;
+    *)
+      run_action "$arg"
+      exit 1
+      ;;
+  esac
+done
+
+refresh_build_flags
+run_action "$ACTION"
