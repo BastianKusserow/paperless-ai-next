@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       manual_version:
-        description: 'Manual version/tag to use (e.g. v2026-03-05-01 or v2.4.0)'
+        description: 'Manual version/tag to use (e.g. v2026.03.01 or v2.4.0)'
         required: false
         default: ''
         type: string
@@ -54,14 +54,19 @@ jobs:
             BASE_VERSION="$MANUAL_VERSION"
             echo "Using manual version tag: $VERSION_TAG"
           else
-            # Use today's date as version base: vYYYY-MM-DD
-            DATE_PREFIX="v$(date +%Y-%m-%d)"
-            BASE_VERSION="$DATE_PREFIX"
-            echo "Date prefix: $DATE_PREFIX"
+            # Use current month as version base: vYYYY.MM
+            MONTH_PREFIX="v$(date +%Y.%m)"
+            BASE_VERSION="$MONTH_PREFIX"
+            echo "Month prefix: $MONTH_PREFIX"
 
-            # Find highest build number for today's date
+            # Find highest build number for current month
             git fetch --tags
-            LATEST_BUILD=$(git tag -l "${DATE_PREFIX}-*" | sed "s/${DATE_PREFIX}-//" | grep '^[0-9]\+$' | sort -n | tail -1)
+            ESCAPED_MONTH_PREFIX="${MONTH_PREFIX//./\\.}"
+            LATEST_BUILD=$(git tag -l "${MONTH_PREFIX}.*" \
+              | grep -E "^${ESCAPED_MONTH_PREFIX}\.[0-9]+$" \
+              | sed -E "s/^${ESCAPED_MONTH_PREFIX}\.//" \
+              | sort -n \
+              | tail -1)
 
             # Increment or start at 01
             if [ -z "$LATEST_BUILD" ]; then
@@ -70,7 +75,7 @@ jobs:
               BUILD_NUMBER=$(printf "%02d" $((10#$LATEST_BUILD + 1)))
             fi
 
-            VERSION_TAG="${DATE_PREFIX}-${BUILD_NUMBER}"
+            VERSION_TAG="${MONTH_PREFIX}.${BUILD_NUMBER}"
             echo "Generated version tag: $VERSION_TAG"
           fi
 
