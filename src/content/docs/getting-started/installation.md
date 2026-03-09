@@ -74,6 +74,11 @@ Then open [http://localhost:3000](http://localhost:3000) and follow the [First S
 
 Need all available Docker environment variables? See the [Configuration reference](/getting-started/configuration/#docker-environment-variables).
 
+:::note[Local HTTP without TLS]
+If you run Paperless-AI locally over plain HTTP (no reverse proxy/TLS), set `COOKIE_SECURE_MODE=never`.
+For details and all supported cookie/proxy flag values, see [Configuration](/getting-started/configuration/#cookie-and-proxy-flags-all-supported-values).
+:::
+
 :::note[Installer + env workflow]
 The new installer covers the complete first-run path (admin, optional MFA, Paperless test, metadata rules, AI test, optional OCR, and review/finish).
 

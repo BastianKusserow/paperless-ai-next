@@ -91,6 +91,8 @@ For Docker setups, you should pre-seed/manage configuration via environment vari
 | `JWT_SECRET` | Secret used to sign and verify JWT login cookies |
 | `PAPERLESS_AI_PORT` | Port the Paperless-AI web app listens on |
 | `PAPERLESS_AI_INITIAL_SETUP` | Enables first-run setup mode (`yes`/`no`) |
+| `TRUST_PROXY` | Express proxy trust setting (controls `X-Forwarded-*` handling) |
+| `COOKIE_SECURE_MODE` | Controls whether auth/CSRF cookies are set with the `Secure` flag |
 
 ### AI provider selection & shared behavior
 
@@ -156,6 +158,55 @@ These are useful mostly for scaling and hardening.
 | `TAG_CACHE_TTL_SECONDS` | `300` | How long to cache the tag list from Paperless-ngx (seconds) |
 | `GLOBAL_RATE_LIMIT_MAX` | `1000` | Max requests per 15-minute window per user |
 | `GLOBAL_RATE_LIMIT_WINDOW_MS` | `900000` | Rate limit window in milliseconds |
+| `MIN_CONTENT_LENGTH` | `10` | Minimum extracted content length before AI analysis is skipped |
+
+## Cookie and proxy flags (all supported values)
+
+### `COOKIE_SECURE_MODE`
+
+Controls the `Secure` attribute for cookies used by login and CSRF protection.
+
+| Value | Behavior | Typical use |
+|---|---|---|
+| `auto` (default) | Use secure cookies only when request is HTTPS (`req.secure` or `X-Forwarded-Proto=https`) | Reverse proxy/TLS setups |
+| `always` | Always set secure cookies | Strict HTTPS-only deployments |
+| `never` | Never set secure cookies | Local HTTP development without TLS |
+
+Important:
+- `false` is **not** a valid value for `COOKIE_SECURE_MODE`.
+- If an invalid value is set, Paperless-AI falls back to `auto`.
+
+### `TRUST_PROXY`
+
+Controls Express `trust proxy` behavior.
+
+Supported values:
+- Empty or unset: disabled (`false`)
+- Boolean-like: `true`, `false`, `yes`, `no`, `on`, `off`
+- Numeric hop count: for example `1`, `2`
+- Named/subnet forms supported by Express (for example `loopback`, `linklocal`, `uniquelocal`, or CIDR/ranges)
+
+## Docker Compose examples
+
+### Local HTTP (no TLS)
+
+```yaml
+services:
+  paperless-ai:
+    environment:
+      - COOKIE_SECURE_MODE=never
+      - TRUST_PROXY=false
+```
+
+### Behind HTTPS reverse proxy
+
+```yaml
+services:
+  paperless-ai:
+    environment:
+      - COOKIE_SECURE_MODE=auto
+      - TRUST_PROXY=1
+```
 
 :::note
 Many boolean-style variables accept `yes/no`, `true/false`, and `1/0`. For consistency, prefer `yes` or `no`.
