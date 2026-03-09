@@ -267,15 +267,12 @@
         scanButton.disabled = disableScan;
         scanButton.classList.toggle('opacity-50', disableScan);
         scanButton.classList.toggle('cursor-not-allowed', disableScan);
+        scanButton.classList.toggle('hidden', isScanning);
 
         scanIcon.classList.toggle('animate-spin', isScanning || scanActionPending);
         scanLabel.textContent = isScanning ? 'Scanning...' : 'Scan Now';
 
-        if (isScanning) {
-            stopButton.classList.remove('hidden');
-        } else {
-            stopButton.classList.add('hidden');
-        }
+        stopButton.classList.toggle('hidden', !isScanning);
 
         const disableStop = !isScanning || stopRequested || stopActionPending;
         stopButton.disabled = disableStop;
