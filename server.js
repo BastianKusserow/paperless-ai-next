@@ -47,7 +47,49 @@ const txtLogger = new Logger({
 });
 
 const app = express();
-let runningTask = false;
+const scanControl = global.__paperlessAiScanControl || {
+  running: false,
+  stopRequested: false,
+  source: null,
+  startedAt: null,
+  stopRequestedAt: null
+};
+global.__paperlessAiScanControl = scanControl;
+
+function requestScanStop() {
+  if (!scanControl.running) {
+    return false;
+  }
+
+  scanControl.stopRequested = true;
+  scanControl.stopRequestedAt = new Date().toISOString();
+  return true;
+}
+
+async function triggerScanNow(source = 'manual') {
+  if (scanControl.running) {
+    return {
+      started: false,
+      running: true,
+      stopRequested: scanControl.stopRequested,
+      message: 'Scan is already running.'
+    };
+  }
+
+  scanDocuments(source).catch((error) => {
+    console.error('[ERROR] scanDocuments() failed in triggerScanNow:', error);
+  });
+
+  return {
+    started: true,
+    running: true,
+    stopRequested: false,
+    message: 'Scan started.'
+  };
+}
+
+global.__paperlessAiTriggerScanNow = triggerScanNow;
+global.__paperlessAiRequestScanStop = requestScanStop;
 
 function persistJwtSecret(secret) {
   const runtimeDataDir = path.join(process.cwd(), 'data');
@@ -755,13 +797,17 @@ async function scanInitial() {
   }
 }
 
-async function scanDocuments() {
-  if (runningTask) {
+async function scanDocuments(source = 'scheduler') {
+  if (scanControl.running) {
     console.log('[DEBUG] Task already running');
     return;
   }
 
-  runningTask = true;
+  scanControl.running = true;
+  scanControl.stopRequested = false;
+  scanControl.source = source;
+  scanControl.startedAt = new Date().toISOString();
+  scanControl.stopRequestedAt = null;
   try {
     let [existingTags, documents, ownUserId, existingCorrespondentList, existingDocumentTypes] = await Promise.all([
       paperlessService.getTags(),
@@ -781,6 +827,11 @@ async function scanDocuments() {
     const existingTagNames = existingTags.map(tag => tag.name);
 
     for (const doc of documents) {
+      if (scanControl.stopRequested) {
+        console.log(`[INFO] Graceful stop requested. Halting scan before next document. source=${scanControl.source || 'unknown'}`);
+        break;
+      }
+
       try {
         const result = await processDocument(doc, existingTagNames, existingCorrespondentList, existingDocumentTypesList, ownUserId);
         if (!result) continue;
@@ -795,7 +846,11 @@ async function scanDocuments() {
   } catch (error) {
     console.error('[ERROR]  during document scan:', error);
   } finally {
-    runningTask = false;
+    scanControl.running = false;
+    scanControl.stopRequested = false;
+    scanControl.source = null;
+    scanControl.startedAt = null;
+    scanControl.stopRequestedAt = null;
     console.log('[INFO] Task completed');
   }
 }

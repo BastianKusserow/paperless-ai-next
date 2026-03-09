@@ -20,6 +20,7 @@
     "test:ocr-fallback-ai-errors": "node scripts/run-tests.js --test ocr-fallback-ai-errors",
     "test:pr772-fix": "node scripts/run-tests.js --test pr772-fix",
     "test:rate-limiting": "node scripts/run-tests.js --test rate-limiting",
+    "test:scan-stop-flow": "node scripts/run-tests.js --test scan-stop-flow",
     "test:restriction-service": "node scripts/run-tests.js --test restriction-service",
     "test:updated-service": "node scripts/run-tests.js --test updated-service",
     "test:list": "node scripts/run-tests.js --list",

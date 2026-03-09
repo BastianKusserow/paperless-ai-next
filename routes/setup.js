@@ -2870,12 +2870,22 @@ router.get('/api/history/validate', isAuthenticated, async (req, res) => {
  *       - ApiKeyAuth: []
  *     responses:
  *       200:
- *         description: Scan initiated successfully
+ *         description: Scan trigger processed successfully
  *         content:
- *           text/plain:
+ *           application/json:
  *             schema:
- *               type: string
- *               example: "Task completed"
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 started:
+ *                   type: boolean
+ *                 running:
+ *                   type: boolean
+ *                 stopRequested:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
  *       401:
  *         description: Unauthorized - authentication required
  *         content:
@@ -2888,6 +2898,8 @@ router.get('/api/history/validate', isAuthenticated, async (req, res) => {
  *                   example: "Authentication required"
  *       500:
  *         description: Server error
+ *       503:
+ *         description: Scan control not ready
  *         content:
  *           application/json:
  *             schema:
@@ -2897,59 +2909,106 @@ router.get('/api/history/validate', isAuthenticated, async (req, res) => {
  *                   type: string
  *                   example: "Error during document scan"
  */
-router.post('/api/scan/now', async (req, res) => {
-try {
+router.post('/api/scan/now', isAuthenticated, async (req, res) => {
+  try {
     const isConfigured = await setupService.isConfigured();
     if (!isConfigured) {
-      console.log(`Setup not completed. Visit http://your-machine-ip:${process.env.PAPERLESS_AI_PORT || 3000}/setup to complete setup.`);
-      return;
+      return res.status(400).json({
+        success: false,
+        error: 'Setup not completed'
+      });
     }
 
     const userId = await paperlessService.getOwnUserID();
     if (!userId) {
-      console.error('Failed to get own user ID. Abort scanning.');
-      return;
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to resolve Paperless user ID'
+      });
     }
-    
-      try {
-        let [existingTags, documents, ownUserId, existingCorrespondentList, existingDocumentTypes] = await Promise.all([
-          paperlessService.getTags(),
-          paperlessService.getAllDocuments(),
-          paperlessService.getOwnUserID(),
-          paperlessService.listCorrespondentsNames(),
-          paperlessService.listDocumentTypesNames()
-        ]);
-    
-        //get existing correspondent list
-        existingCorrespondentList = existingCorrespondentList.map(correspondent => correspondent.name);
-        
-        //get existing document types list
-        let existingDocumentTypesList = existingDocumentTypes.map(docType => docType.name);
-        
-        // Extract tag names from tag objects
-        const existingTagNames = existingTags.map(tag => tag.name);
-    
-        for (const doc of documents) {
-          try {
-            const result = await processDocument(doc, existingTagNames, existingCorrespondentList, existingDocumentTypesList, ownUserId);
-            if (!result) continue;
-    
-            const { analysis, originalData } = result;
-            const updateData = await buildUpdateData(analysis, doc);
-            await saveDocumentChanges(doc.id, updateData, analysis, originalData);
-          } catch (error) {
-            console.error(`[ERROR] processing document ${doc.id}:`, error);
-          }
-        }
-      } catch (error) {
-        console.error('[ERROR]  during document scan:', error);
-      } finally {
-        runningTask = false;
-        console.log('[INFO] Task completed');
-        res.send('Task completed');
-      }
+
+    const triggerScanNow = global.__paperlessAiTriggerScanNow;
+    if (typeof triggerScanNow !== 'function') {
+      return res.status(503).json({
+        success: false,
+        error: 'Scan control is not available yet. Please try again in a moment.'
+      });
+    }
+
+    const result = await triggerScanNow('api-manual');
+    return res.json({
+      success: true,
+      ...result
+    });
   } catch (error) {
-    console.error('[ERROR] in startScanning:', error);
+    console.error('[ERROR] /api/scan/now:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error during document scan trigger'
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/scan/stop:
+ *   post:
+ *     summary: Request graceful stop for active scan
+ *     description: |
+ *       Requests a graceful stop of the currently running scan.
+ *       The current document is allowed to finish processing before the scan exits.
+ *     tags:
+ *       - Documents
+ *       - API
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Stop request processed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 running:
+ *                   type: boolean
+ *                 stopRequested:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized - authentication required
+ */
+router.post('/api/scan/stop', isAuthenticated, async (req, res) => {
+  try {
+    const requestScanStop = global.__paperlessAiRequestScanStop;
+    const scanState = global.__paperlessAiScanControl || { running: false, stopRequested: false };
+
+    if (typeof requestScanStop !== 'function') {
+      return res.status(503).json({
+        success: false,
+        error: 'Scan control is not available yet. Please try again in a moment.'
+      });
+    }
+
+    const requested = requestScanStop();
+    return res.json({
+      success: true,
+      running: Boolean(scanState.running),
+      stopRequested: Boolean(scanState.stopRequested),
+      message: requested
+        ? 'Stop requested. The current document will finish before scan stops.'
+        : 'No active scan to stop.'
+    });
+  } catch (error) {
+    console.error('[ERROR] /api/scan/stop:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error while requesting scan stop'
+    });
   }
 });
 
@@ -6937,15 +6996,19 @@ router.post('/settings', express.json(), async (req, res) => {
  *                   type: boolean
  *                   description: Whether documents are currently being processed
  *                   example: true
- *                 queueLength:
- *                   type: integer
- *                   description: Number of documents waiting in the processing queue
- *                   example: 5
- *                 currentDocument:
+ *                 isScanning:
+ *                   type: boolean
+ *                   description: Whether a scan loop is currently running
+ *                   example: true
+ *                 stopRequested:
+ *                   type: boolean
+ *                   description: Whether a graceful stop has been requested
+ *                   example: false
+ *                 currentlyProcessing:
  *                   type: object
  *                   description: Details about the document currently being processed (if any)
  *                   properties:
- *                     id:
+ *                     documentId:
  *                       type: integer
  *                       description: Document ID
  *                       example: 123
@@ -6978,10 +7041,15 @@ router.post('/settings', express.json(), async (req, res) => {
  *                   type: string
  *                   example: "Failed to fetch processing status"
  */
-router.get('/api/processing-status', async (req, res) => {
+router.get('/api/processing-status', isAuthenticated, async (req, res) => {
   try {
       const status = await documentModel.getCurrentProcessingStatus();
-      res.json(status);
+      const scanState = global.__paperlessAiScanControl || {};
+      res.json({
+        ...status,
+        isScanning: Boolean(scanState.running),
+        stopRequested: Boolean(scanState.stopRequested)
+      });
   } catch (error) {
       res.status(500).json({ error: 'Failed to fetch processing status' });
   }

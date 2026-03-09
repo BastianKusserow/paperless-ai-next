@@ -39,6 +39,7 @@ const TESTS = {
   'ocr-fallback-ai-errors': 'test-ocr-fallback-ai-errors.js',
   'pr772-fix': 'test-pr772-fix.js',
   'rate-limiting': 'test-rate-limiting.js',
+  'scan-stop-flow': 'test-scan-stop-flow.js',
   'restriction-service': 'test-restriction-service.js',
   'updated-service': 'test-updated-service.js'
 };
@@ -51,7 +52,8 @@ const AREAS = {
     'document-type-restriction',
     'ignore-tags-filter',
     'effective-document-count-cache',
-    'pr772-fix'
+    'pr772-fix',
+    'scan-stop-flow'
   ],
   prompts: ['restriction-service', 'updated-service']
 };
@@ -104,6 +106,20 @@ async function getSkipReason(testName) {
     const reachable = await checkHttpAvailability(baseUrl);
     if (!reachable) {
       return `server not reachable at ${baseUrl}`;
+    }
+  }
+
+  if (testName === 'scan-stop-flow') {
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const reachable = await checkHttpAvailability(baseUrl);
+    if (!reachable) {
+      return `server not reachable at ${baseUrl}`;
+    }
+
+    const hasToken = Boolean(process.env.JWT_TOKEN);
+    const hasApiKey = Boolean(process.env.API_KEY || process.env.PAPERLESS_AI_API_KEY);
+    if (!hasToken && !hasApiKey) {
+      return 'missing JWT_TOKEN or API_KEY/PAPERLESS_AI_API_KEY';
     }
   }
 

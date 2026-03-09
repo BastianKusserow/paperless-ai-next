@@ -252,20 +252,48 @@
     };
 </script>
 <script>
+    let scanActionPending = false;
+    let stopActionPending = false;
+
+    function setScanButtonsState(isScanning, stopRequested) {
+        const scanButton = document.getElementById('scanButton');
+        const stopButton = document.getElementById('stopScanButton');
+        const scanIcon = scanButton.querySelector('i');
+        const scanLabel = scanButton.querySelector('span');
+        const stopIcon = stopButton.querySelector('i');
+        const stopLabel = stopButton.querySelector('span');
+
+        const disableScan = isScanning || scanActionPending;
+        scanButton.disabled = disableScan;
+        scanButton.classList.toggle('opacity-50', disableScan);
+        scanButton.classList.toggle('cursor-not-allowed', disableScan);
+
+        scanIcon.classList.toggle('animate-spin', isScanning || scanActionPending);
+        scanLabel.textContent = isScanning ? 'Scanning...' : 'Scan Now';
+
+        if (isScanning) {
+            stopButton.classList.remove('hidden');
+        } else {
+            stopButton.classList.add('hidden');
+        }
+
+        const disableStop = !isScanning || stopRequested || stopActionPending;
+        stopButton.disabled = disableStop;
+        stopButton.classList.toggle('opacity-50', disableStop);
+        stopButton.classList.toggle('cursor-not-allowed', disableStop);
+        stopIcon.classList.toggle('animate-pulse', stopRequested || stopActionPending);
+        stopLabel.textContent = stopRequested ? 'Stopping...' : 'Stop';
+    }
+
     async function triggerScan() {
         const button = document.getElementById('scanButton');
         
         if (button.disabled) {
             return;
         }
-        
-        const icon = button.querySelector('i');
-        const span = button.querySelector('span');
-        
-        button.disabled = true;
-        button.classList.add('opacity-50', 'cursor-not-allowed');
-        icon.classList.add('animate-spin');
-        span.textContent = 'Scanning...';
+
+        scanActionPending = true;
+        setScanButtonsState(true, false);
         
         try {
             const response = await fetch('/api/scan/now', {
@@ -289,10 +317,36 @@
         } catch (error) {
             console.error('Scan failed:', error);
         } finally {
-            button.disabled = false;
-            button.classList.remove('opacity-50', 'cursor-not-allowed');
-            icon.classList.remove('animate-spin');
-            span.textContent = 'Scan Now';
+            scanActionPending = false;
+            updateProcessingStatus();
+        }
+    }
+
+    async function stopScan() {
+        const stopButton = document.getElementById('stopScanButton');
+        if (stopButton.disabled) {
+            return;
+        }
+
+        stopActionPending = true;
+        setScanButtonsState(true, true);
+
+        try {
+            const response = await fetch('/api/scan/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Stop request failed');
+            }
+        } catch (error) {
+            console.error('Stop request failed:', error);
+        } finally {
+            stopActionPending = false;
+            updateProcessingStatus();
         }
     }
 
@@ -330,11 +384,12 @@
                 
                 const processingContainer = document.getElementById('processingContainer');
                 const idleContainer = document.getElementById('idleContainer');
+                const isScanning = Boolean(data.isScanning || data.currentlyProcessing);
+                const stopRequested = Boolean(data.stopRequested);
                 
                 if (data.currentlyProcessing) {
                     processingContainer.classList.remove('hidden');
                     idleContainer.classList.add('hidden');
-                    document.getElementById('scanButton').disabled = true;
                                             
                     document.getElementById('currentDocId').textContent = `#${data.currentlyProcessing.documentId}`;
                     data.currentlyProcessing.title = data.currentlyProcessing.title.length > 50
@@ -349,7 +404,6 @@
                 } else {
                     processingContainer.classList.add('hidden');
                     idleContainer.classList.remove('hidden');
-                    document.getElementById('scanButton').disabled = false;
                     if (data.lastProcessed) {
                         const timeAgo = formatTimeAgo(data.lastProcessed.processed_at);
                         console.log('Last processed:', data.lastProcessed.processed_at);
@@ -359,6 +413,8 @@
                         document.getElementById('lastProcessed').textContent = 'No documents processed yet';
                     }
                 }
+
+                setScanButtonsState(isScanning, stopRequested);
                 
                 document.getElementById('processedToday').textContent = data.processedToday;
                 

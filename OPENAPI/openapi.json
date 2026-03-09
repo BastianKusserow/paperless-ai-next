@@ -2981,12 +2981,28 @@
         ],
         "responses": {
           "200": {
-            "description": "Scan initiated successfully",
+            "description": "Scan trigger processed successfully",
             "content": {
-              "text/plain": {
+              "application/json": {
                 "schema": {
-                  "type": "string",
-                  "example": "Task completed"
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "started": {
+                      "type": "boolean"
+                    },
+                    "running": {
+                      "type": "boolean"
+                    },
+                    "stopRequested": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
                 }
               }
             }
@@ -3022,6 +3038,56 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Scan control not ready"
+          }
+        }
+      }
+    },
+    "/api/scan/stop": {
+      "post": {
+        "summary": "Request graceful stop for active scan",
+        "description": "Requests a graceful stop of the currently running scan.\nThe current document is allowed to finish processing before the scan exits.\n",
+        "tags": [
+          "Documents",
+          "API"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stop request processed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "running": {
+                      "type": "boolean"
+                    },
+                    "stopRequested": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - authentication required"
           }
         }
       }
@@ -4947,16 +5013,21 @@
                       "description": "Whether documents are currently being processed",
                       "example": true
                     },
-                    "queueLength": {
-                      "type": "integer",
-                      "description": "Number of documents waiting in the processing queue",
-                      "example": 5
+                    "isScanning": {
+                      "type": "boolean",
+                      "description": "Whether a scan loop is currently running",
+                      "example": true
                     },
-                    "currentDocument": {
+                    "stopRequested": {
+                      "type": "boolean",
+                      "description": "Whether a graceful stop has been requested",
+                      "example": false
+                    },
+                    "currentlyProcessing": {
                       "type": "object",
                       "description": "Details about the document currently being processed (if any)",
                       "properties": {
-                        "id": {
+                        "documentId": {
                           "type": "integer",
                           "description": "Document ID",
                           "example": 123
