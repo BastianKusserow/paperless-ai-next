@@ -181,23 +181,18 @@ Use `src/content/docs/fixes/NEXT-000-template/index.md` as the canonical templat
    See existing fixes for reference:
    - `src/content/docs/fixes/NEXT-000-template/index.md`
 
-4. **Update `src/content/docs/fixes/index.md`**
-   - Add entry to the overview table
-   - Include fix ID, title, status (✅ Applied), and integration date
-
-5. **Update `src/content/docs/changelog.md`**
+4. **Update `src/content/docs/changelog.md`**
    - Add a row to the appropriate table section
    - Format: `| FIX-ID (fixes/NEXT-{NNN}-{name}/) | Description | Date |`
-   - Keep Starlight sidebar/autogeneration consistent with folder structure under `src/content/docs/fixes/`
    - **The root `README.md` does NOT contain a fixes table** — it links to the Docs site
 
-6. **Commit Documentation**
+5. **Commit Documentation**
    ```bash
    git add src/content/docs/
    git commit -m "docs: document NEXT-{NNN} fix"
    ```
 
-7. **Create Pull Request**
+6. **Create Pull Request**
    - Title: `[NEXT-{NNN}] Short description`
    - Link to upstream PR if applicable
    - Reference any related issues
