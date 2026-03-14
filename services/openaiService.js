@@ -9,6 +9,7 @@ const config = require('../config/config');
 const paperlessService = require('./paperlessService');
 const fs = require('fs').promises;
 const path = require('path');
+const { THUMBNAIL_CACHE_DIR, getThumbnailCachePath } = require('./thumbnailCachePaths');
 const { model } = require('./ollamaService');
 const RestrictionPromptService = require('./restrictionPromptService');
 const responseLogPath = path.join('/app', 'data', 'logs', 'response.txt');
@@ -39,7 +40,7 @@ class OpenAIService {
   }
 
   async analyzeDocument(content, existingTags = [], existingCorrespondentList = [], existingDocumentTypesList = [], id, customPrompt = null, options = {}) {
-    const cachePath = path.join('./public/images', `${id}.png`);
+    const cachePath = getThumbnailCachePath(id);
     try {
       this.initialize();
       const now = new Date();
@@ -59,10 +60,11 @@ class OpenAIService {
         const thumbnailData = await paperlessService.getThumbnailImage(id);
 
         if (!thumbnailData) {
-          console.warn('Thumbnail nicht gefunden');
+          console.warn('Thumbnail not found');
+          return;
         }
 
-        await fs.mkdir(path.dirname(cachePath), { recursive: true });
+        await fs.mkdir(THUMBNAIL_CACHE_DIR, { recursive: true });
         await fs.writeFile(cachePath, thumbnailData);
       }
 

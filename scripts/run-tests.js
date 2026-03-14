@@ -40,20 +40,23 @@ const TESTS = {
   'pr772-fix': 'test-pr772-fix.js',
   'rate-limiting': 'test-rate-limiting.js',
   'scan-stop-flow': 'test-scan-stop-flow.js',
+  'thumbnail-auth-guard': 'test-thumbnail-auth-guard.js',
+  'thumbnail-startup-migration': 'test-thumbnail-startup-migration.js',
   'restriction-service': 'test-restriction-service.js',
   'updated-service': 'test-updated-service.js'
 };
 
 const AREAS = {
   chat: ['chat-document-search', 'chat-documents-service-search'],
-  auth: ['login-mfa-flow', 'rate-limiting'],
+  auth: ['login-mfa-flow', 'rate-limiting', 'thumbnail-auth-guard'],
   ocr: ['ocr-fallback-ai-errors'],
   processing: [
     'document-type-restriction',
     'ignore-tags-filter',
     'effective-document-count-cache',
     'pr772-fix',
-    'scan-stop-flow'
+    'scan-stop-flow',
+    'thumbnail-startup-migration'
   ],
   prompts: ['restriction-service', 'updated-service']
 };
@@ -102,6 +105,14 @@ async function getSkipReason(testName) {
   }
 
   if (testName === 'rate-limiting') {
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+    const reachable = await checkHttpAvailability(baseUrl);
+    if (!reachable) {
+      return `server not reachable at ${baseUrl}`;
+    }
+  }
+
+  if (testName === 'thumbnail-auth-guard') {
     const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
     const reachable = await checkHttpAvailability(baseUrl);
     if (!reachable) {

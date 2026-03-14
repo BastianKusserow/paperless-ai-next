@@ -23,6 +23,7 @@ const cookieParser = require('cookie-parser');
 const { authenticateJWT, isAuthenticated } = require('./auth.js');
 const customService = require('../services/customService.js');
 const mistralOcrService = require('../services/mistralOcrService');
+const { THUMBNAIL_CACHE_DIR, getThumbnailCachePath } = require('../services/thumbnailCachePaths');
 const config = require('../config/config.js');
 require('dotenv').config({ path: '../data/.env' });
 
@@ -62,8 +63,6 @@ const SETTINGS_SECRET_FIELDS = [
   'AZURE_API_KEY',
   'MISTRAL_API_KEY'
 ];
-
-const THUMBNAIL_CACHE_DIR = path.join('.', 'public', 'images');
 
 function formatBytes(bytes) {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -1113,7 +1112,7 @@ router.get('/api/playground/bootstrap', protectApiRoute, async (req, res) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/thumb/:documentId', async (req, res) => {
+router.get('/thumb/:documentId', isAuthenticated, async (req, res) => {
   const documentId = req.params.documentId;
 
   // Validate documentId to prevent path traversal
@@ -1121,40 +1120,37 @@ router.get('/thumb/:documentId', async (req, res) => {
     return res.status(400).send('Invalid document ID');
   }
 
-  const cachePath = path.join('./public/images', `${documentId}.png`);
+  const cachePath = getThumbnailCachePath(documentId);
 
   try {
-    // Prüfe ob das Bild bereits im Cache existiert
     try {
       await fs.access(cachePath);
       console.log('Serving cached thumbnail');
-      
-      // Wenn ja, sende direkt das gecachte Bild
+
       res.setHeader('Content-Type', 'image/png');
-      return res.sendFile(path.resolve(cachePath));
-      
-    } catch (err) {
-      // File existiert nicht im Cache, hole es von Paperless
-      console.log('Thumbnail not cached, fetching from Paperless');
-      
-      const thumbnailData = await paperlessService.getThumbnailImage(req.params.documentId);
-      
-      if (!thumbnailData) {
-        return res.status(404).send('Thumbnail nicht gefunden');
+      return res.sendFile(cachePath);
+    } catch (cacheError) {
+      if (cacheError.code !== 'ENOENT') {
+        console.warn(`[WARN] Failed to access thumbnail cache file ${cachePath}:`, cacheError.message);
       }
 
-      // Speichere im Cache
-      await fs.mkdir(path.dirname(cachePath), { recursive: true }); // Erstelle Verzeichnis falls nicht existiert
+      console.log('Thumbnail not cached, fetching from Paperless');
+
+      const thumbnailData = await paperlessService.getThumbnailImage(req.params.documentId);
+
+      if (!thumbnailData) {
+        return res.status(404).send('Thumbnail not found');
+      }
+
+      await fs.mkdir(THUMBNAIL_CACHE_DIR, { recursive: true });
       await fs.writeFile(cachePath, thumbnailData);
 
-      // Sende das Bild
       res.setHeader('Content-Type', 'image/png');
-      res.send(thumbnailData);
+      return res.send(thumbnailData);
     }
-
   } catch (error) {
-    console.error('Fehler beim Abrufen des Thumbnails:', error);
-    res.status(500).send('Fehler beim Laden des Thumbnails');
+    console.error('[ERROR] while fetching thumbnail:', error);
+    return res.status(500).send('Failed to load thumbnail');
   }
 });
 
