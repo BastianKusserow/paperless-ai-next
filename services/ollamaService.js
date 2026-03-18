@@ -11,6 +11,7 @@ const path = require('path');
 const paperlessService = require('./paperlessService');
 const os = require('os');
 const OpenAI = require('openai');
+const { THUMBNAIL_CACHE_DIR, getThumbnailCachePath } = require('./thumbnailCachePaths');
 const RestrictionPromptService = require('./restrictionPromptService');
 
 /**
@@ -541,7 +542,7 @@ class OllamaService {
     async _handleThumbnailCaching(id) {
         if (!id) return;
 
-        const cachePath = path.join('./public/images', `${id}.png`);
+        const cachePath = getThumbnailCachePath(id);
         try {
             await fs.access(cachePath);
             console.log('[DEBUG] Thumbnail already cached');
@@ -549,10 +550,10 @@ class OllamaService {
             console.log('Thumbnail not cached, fetching from Paperless');
             const thumbnailData = await paperlessService.getThumbnailImage(id);
             if (!thumbnailData) {
-                console.warn('Thumbnail nicht gefunden');
+                console.warn('Thumbnail not found');
                 return;
             }
-            await fs.mkdir(path.dirname(cachePath), { recursive: true });
+            await fs.mkdir(THUMBNAIL_CACHE_DIR, { recursive: true });
             await fs.writeFile(cachePath, thumbnailData);
         }
     }

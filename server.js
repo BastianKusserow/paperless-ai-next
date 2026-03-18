@@ -9,6 +9,7 @@ const paperlessService = require('./services/paperlessService');
 const AIServiceFactory = require('./services/aiServiceFactory');
 const documentModel = require('./models/document');
 const setupService = require('./services/setupService');
+const { runStartupMigrations } = require('./services/startupMigrations');
 const setupRoutes = require('./routes/setup');
 const { isAuthenticated } = require('./routes/auth');
 const mistralOcrService = require('./services/mistralOcrService');
@@ -1149,6 +1150,7 @@ async function startServer() {
   const port = process.env.PAPERLESS_AI_PORT || 3000;
   try {
     await initializeDataDirectory();
+    await runStartupMigrations(console);
     await saveOpenApiSpec(); // Save OpenAPI specification on startup
     app.listen(port, () => {
       console.log(`Server running on port ${port}`);
