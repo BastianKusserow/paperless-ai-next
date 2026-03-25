@@ -38,6 +38,21 @@ function getCookieSecureMode() {
     : String(process.env.COOKIE_SECURE_MODE || 'auto').trim().toLowerCase();
 }
 
+async function triggerPythonRestartAfterConfigSave(reason) {
+  const ragEnabled = String(process.env.RAG_SERVICE_ENABLED || '').trim().toLowerCase() === 'true';
+  if (!ragEnabled) {
+    return { requested: false, reason: 'rag_disabled' };
+  }
+
+  try {
+    const result = await RAGService.restartPythonService({ reason, delaySeconds: 0.75 });
+    return { requested: true, result };
+  } catch (error) {
+    console.warn('[WARN] Failed to request Python RAG restart after config save:', error.message || error);
+    return { requested: false, reason: 'request_failed', error: error.message || String(error) };
+  }
+}
+
 function shouldUseSecureCookies(req) {
   const mode = getCookieSecureMode();
 
@@ -61,7 +76,8 @@ const SETTINGS_SECRET_FIELDS = [
   'OPENAI_API_KEY',
   'CUSTOM_API_KEY',
   'AZURE_API_KEY',
-  'MISTRAL_API_KEY'
+  'MISTRAL_API_KEY',
+  'API_KEY'
 ];
 
 function formatBytes(bytes) {
@@ -375,6 +391,89 @@ let PUBLIC_ROUTES = [
   '/setup',
   '/api/setup'
 ];
+
+/**
+ * Returns true if the incoming request originates from localhost.
+ * Uses req.socket.remoteAddress (direct TCP connection IP) rather than
+ * req.ip to remain resistant to X-Forwarded-For spoofing even when
+ * trust proxy is enabled.
+ */
+function isLocalRequest(req) {
+  const remoteAddr = req.socket?.remoteAddress;
+  if (!remoteAddr) {
+    return false;
+  }
+
+  return (
+    remoteAddr === '127.0.0.1' ||
+    remoteAddr === '::1' ||
+    remoteAddr === '::ffff:127.0.0.1'
+  );
+}
+
+/**
+ * SECURITY GUARD: Blocks remote access to setup endpoints while the
+ * initial setup is still pending (CWE-306 / GHSA-v4jq-65q5-wgjp).
+ *
+ * Rules (evaluated in order):
+ *  1. Non-setup paths pass through unconditionally.
+ *  2. Once setup is complete, the guard is lifted unconditionally.
+ *  3. ALLOW_REMOTE_SETUP=yes grants explicit opt-in for remote access.
+ *  4. Requests from localhost are always allowed.
+ *  5. All other remote requests receive HTTP 403.
+ */
+router.use(async (req, res, next) => {
+  const isSetupPath =
+    req.path === '/setup' ||
+    req.path.startsWith('/setup/') ||
+    req.path.startsWith('/api/setup');
+
+  if (!isSetupPath) {
+    return next();
+  }
+
+  try {
+    const setupOpen = await isInitialSetupOpen();
+    if (!setupOpen) {
+      // Setup already complete — no restriction needed
+      return next();
+    }
+  } catch {
+    // Fail-open here: let the next middleware handle setup-state errors
+    return next();
+  }
+
+  if (process.env.ALLOW_REMOTE_SETUP === 'yes') {
+    return next();
+  }
+
+  if (isLocalRequest(req)) {
+    return next();
+  }
+
+  // Remote client on an open fresh instance — block
+  const isApiPath = req.path.startsWith('/api/setup');
+  if (isApiPath) {
+    return res.status(403).json({
+      success: false,
+      error:
+        'Remote access to the setup API is disabled. ' +
+        'Set ALLOW_REMOTE_SETUP=yes to enable it, or complete setup from localhost.'
+    });
+  }
+
+  return res
+    .status(403)
+    .type('text/html')
+    .send(
+      '<html><head><title>Setup Restricted</title></head><body>' +
+        '<h1>403 – Remote Setup Access Denied</h1>' +
+        '<p>Initial setup is only accessible from localhost by default.</p>' +
+        '<p>Set <code>ALLOW_REMOTE_SETUP=yes</code> to enable remote access, ' +
+        'or connect from the machine running paperless-ai-next.</p>' +
+        '</body></html>'
+    );
+});
 
 // Combined middleware to check authentication and setup
 router.use(async (req, res, next) => {
@@ -2550,12 +2649,25 @@ router.post('/api/settings/thumbnail-cache/clear', isAuthenticated, cacheClearLi
  * /api/settings/reset-local-overrides:
  *   post:
  *     summary: Reset local runtime overrides
- *     description: Removes local runtime override values so injected environment variables are used after restart.
+ *     description: |
+ *       Removes local runtime override values so injected environment variables are used after restart.
+ *       This operation is restricted to interactive user sessions and requires the current account password.
  *     tags:
  *       - Settings
  *     security:
  *       - BearerAuth: []
- *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - currentPassword
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 description: Current password of the signed-in settings user
  *     responses:
  *       200:
  *         description: Override reset completed
@@ -2568,23 +2680,70 @@ router.post('/api/settings/thumbnail-cache/clear', isAuthenticated, cacheClearLi
  *                   type: boolean
  *                 hadOverrides:
  *                   type: boolean
+ *                 restart:
+ *                   type: boolean
  *                 message:
  *                   type: string
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Invalid password
+ *       403:
+ *         description: Forbidden - interactive session required
+ *       404:
+ *         description: User not found
  *       500:
  *         description: Server error
  */
 
-router.post('/api/settings/reset-local-overrides', isAuthenticated, cacheClearLimiter, async (req, res) => {
+router.post('/api/settings/reset-local-overrides', isAuthenticated, cacheClearLimiter, express.json(), async (req, res) => {
   try {
+    const username = getAuthenticatedSettingsUsername(req);
+    if (!username) {
+      return res.status(403).json({
+        success: false,
+        error: 'Reset local overrides requires a signed-in user session.'
+      });
+    }
+
+    const currentPassword = String(req.body?.currentPassword || '').trim();
+    if (!currentPassword) {
+      return res.status(400).json({
+        success: false,
+        error: 'Current password is required.'
+      });
+    }
+
+    const user = await documentModel.getUser(username);
+    if (!user || !user.password) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found.'
+      });
+    }
+
+    const validPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!validPassword) {
+      return res.status(401).json({
+        success: false,
+        error: 'Current password is invalid.'
+      });
+    }
+
     const hadOverrides = await setupService.clearRuntimeOverrides();
 
     res.json({
       success: true,
       hadOverrides,
+      restart: true,
       message: hadOverrides
-        ? 'Local runtime overrides have been removed. Restart the container to apply injected environment values.'
-        : 'No local runtime overrides were found. Restart the container to reload injected environment values.'
+        ? 'Local runtime overrides have been removed. Restarting service to apply injected environment values.'
+        : 'No local runtime overrides were found. Restarting service to reload injected environment values.'
     });
+
+    setTimeout(() => {
+      process.exit(0);
+    }, 5000);
   } catch (error) {
     console.error('[ERROR] resetting local runtime overrides:', error);
     res.status(500).json({
@@ -3322,25 +3481,32 @@ router.post('/api/key-regenerate', async (req, res) => {
     const dotenv = require('dotenv');
     const crypto = require('crypto');    
     const envPath = path.join(__dirname, '../data/', '.env');
-    const envConfig = dotenv.parse(fs.readFileSync(envPath));
-    // Generiere ein neues API-Token
+    const legacyMode = String(process.env.CONFIG_SOURCE_MODE || 'runtime-first').trim().toLowerCase() === 'legacy';
+    let envConfig = {};
+    if (legacyMode && fs.existsSync(envPath)) {
+      envConfig = dotenv.parse(fs.readFileSync(envPath));
+    }
+
+    // Generate a new API token
     const apiKey = crypto.randomBytes(32).toString('hex');
     envConfig.API_KEY = apiKey;
 
-    // Schreibe die aktualisierte .env-Datei
-    const envContent = Object.entries(envConfig)
-      .map(([key, value]) => `${key}=${value}`)
-      .join('\n');
-    fs.writeFileSync(envPath, envContent);
+    if (legacyMode) {
+      // Persist to legacy .env only in legacy mode
+      const envContent = Object.entries(envConfig)
+        .map(([key, value]) => `${key}=${value}`)
+        .join('\n');
+      fs.writeFileSync(envPath, envContent);
+    }
 
-    // Setze die Umgebungsvariable für den aktuellen Prozess
+    // Set runtime value for current process
     process.env.API_KEY = apiKey;
     await setupService.saveRuntimeOverrides({
       ...(await setupService.loadRuntimeOverrides()),
       API_KEY: apiKey
     });
 
-    // Sende die Antwort zurück
+    // Return response
     res.json({ success: true, newKey: apiKey });
   } catch (error) {
     console.error('API key regeneration error:', error);
@@ -3693,8 +3859,41 @@ async function validateAiConnectionForSetup({ aiProvider, apiUrl, token, model, 
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+// Helper: Sanitize config for bootstrap (remove secrets)
+function sanitizeConfigForBootstrap(config) {
+  const sanitized = { ...config };
+  const secretFields = [
+    'PAPERLESS_API_TOKEN',
+    'OPENAI_API_KEY',
+    'CUSTOM_API_KEY',
+    'AZURE_API_KEY',
+    'MISTRAL_API_KEY'
+  ];
+  secretFields.forEach(field => {
+    delete sanitized[field];
+  });
+  return sanitized;
+}
+
 router.get('/setup', async (req, res) => {
   try {
+    // SECURITY: Check setup state first to detect degraded conditions
+    const setupState = await setupService.getSetupState();
+
+    // If system is in degraded state (config exists but database corrupted),
+    // refuse to render setup page with embedded config
+    if (setupState === 'degraded') {
+      console.warn('[SECURITY] Attempting to access /setup in degraded state (corrupted database)');
+      return res.status(500).render('setup-error', {
+        title: 'System Configuration Error',
+        errorMessage: 'The system configuration exists but the database is inaccessible or corrupted. This is an administrative error state. Please check system logs and database integrity.',
+        supportText: 'This may occur if: (1) the database file was deleted or corrupted, (2) file permissions changed, or (3) the database is locked. Restart the application after verifying database and permissions.'
+      }).catch(() => {
+        // Fallback if setup-error template doesn't exist
+        res.status(500).send('<h1>System Configuration Error</h1><p>Database is inaccessible. Please contact your administrator.</p>');
+      });
+    }
+
     // Base configuration object - load this FIRST, before any checks
     let config = {
       PAPERLESS_API_URL: (process.env.PAPERLESS_API_URL || 'http://localhost:8000').replace(/\/api$/, ''),
@@ -3773,9 +3972,12 @@ router.get('/setup', async (req, res) => {
       return res.redirect('/dashboard');
     }
 
-    // Render setup page with config and appropriate message
+    // SECURITY: Sanitize config before passing to template (remove secrets from bootstrap)
+    const sanitizedConfig = sanitizeConfigForBootstrap(config);
+
+    // Render setup page with sanitized config and appropriate message
     res.render('setup', {
-      config,
+      config: sanitizedConfig,
       success: successMessage,
       aiProviderPresets,
       defaults: {
@@ -4007,7 +4209,7 @@ router.post('/api/setup/paperless/metadata', express.json(), async (req, res) =>
       });
     }
 
-    const urlValidation = validateApiUrl(normalizedUrl, getSetupUrlValidationOptions());
+    const urlValidation = await validateApiUrl(normalizedUrl, getSetupUrlValidationOptions());
     if (!urlValidation.valid) {
       return res.status(400).json({
         success: false,
@@ -4287,6 +4489,8 @@ router.post('/api/setup/complete', express.json(), async (req, res) => {
       await documentModel.setUserMfaSettings(adminUsername, true, mfaSecretToPersist);
       setupMfaChallenges.delete(mfaChallengeId);
     }
+
+    await triggerPythonRestartAfterConfigSave('setup_complete');
 
     const envPreview = toEnvPreviewLines(finalConfig);
 
@@ -5175,6 +5379,17 @@ router.get('/settings', async (req, res) => {
   const runtimeOverrides = await setupService.loadRuntimeOverrides();
   const injectedEnvSnapshot = global.__PAPERLESS_AI_INJECTED_ENV_SNAPSHOT__ || {};
   const secretKeys = new Set(SETTINGS_SECRET_FIELDS);
+  const runtimeFirstMode = String(process.env.CONFIG_SOURCE_MODE || 'runtime-first').trim().toLowerCase() !== 'legacy';
+  let hasLegacyEnvMigrationNotice = false;
+
+  if (runtimeFirstMode) {
+    try {
+      await fs.access(path.join(process.cwd(), 'data', '.env.migrated'));
+      hasLegacyEnvMigrationNotice = true;
+    } catch (_error) {
+      hasLegacyEnvMigrationNotice = false;
+    }
+  }
 
   const formatValueForTooltip = (key, value) => {
     const normalizedValue = value == null ? '' : String(value);
@@ -5292,6 +5507,18 @@ router.get('/settings', async (req, res) => {
   console.log('Current config IGNORE_TAGS:', config.IGNORE_TAGS);
   console.log('Current config PROMPT_TAGS:', config.PROMPT_TAGS);
 
+  const lockedEnvKeys = Object.keys(config).filter((key) =>
+    configFile.isProtectedRuntimeEnvKey(key)
+  );
+  const lockedEnvDetails = Object.fromEntries(
+    lockedEnvKeys.map((key) => [
+      key,
+      {
+        managed: formatValueForTooltip(key, injectedEnvSnapshot[key])
+      }
+    ])
+  );
+
   const configuredSecrets = {};
   SETTINGS_SECRET_FIELDS.forEach((key) => {
     configuredSecrets[key] = Boolean(config[key]);
@@ -5329,10 +5556,89 @@ router.get('/settings', async (req, res) => {
     configuredSecrets,
     runtimeOverrideKeys: Array.from(runtimeOverrideKeys),
     runtimeOverrideDetails,
+    lockedEnvKeys,
+    lockedEnvDetails,
+    runtimeFirstMode,
+    hasLegacyEnvMigrationNotice,
     mfaSettings,
     success: isConfigured ? 'The application is already configured. You can update the configuration below.' : undefined,
     settingsError: showErrorCheckSettings ? 'Please check your settings. Something is not working correctly.' : undefined
   });
+});
+
+/**
+ * @swagger
+ * /api/settings/api-key:
+ *   get:
+ *     summary: Get current application API key
+ *     description: |
+ *       Returns the currently active application API key for authenticated users.
+ *       The key is intentionally fetched on-demand and is not embedded in server-rendered HTML.
+ *     tags:
+ *       - System
+ *       - Authentication
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Current API key returned successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 configured:
+ *                   type: boolean
+ *                   description: Indicates whether an API key is currently configured
+ *                   example: true
+ *                 apiKey:
+ *                   type: string
+ *                   nullable: true
+ *                   description: Current API key value when configured
+ *                   example: "3f7a8d6e2c1b5a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5"
+ *       401:
+ *         description: Unauthorized - authentication required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: string
+ *                   example: "Authentication required"
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: string
+ *                   example: "Failed to load API key"
+ */
+router.get('/api/settings/api-key', isAuthenticated, async (req, res) => {
+  try {
+    const apiKey = configFile.getApiKey ? configFile.getApiKey() : (process.env.API_KEY || process.env.PAPERLESS_AI_API_KEY || '');
+    return res.json({
+      success: true,
+      configured: Boolean(apiKey),
+      apiKey: apiKey || null
+    });
+  } catch (error) {
+    console.error('[ERROR] GET /api/settings/api-key:', error);
+    return res.status(500).json({ success: false, error: 'Failed to load API key' });
+  }
 });
 
 router.get('/api/settings/paperless-public-url', isAuthenticated, async (req, res) => {
@@ -6507,6 +6813,9 @@ router.post('/settings', express.json(), async (req, res) => {
     const hasValue = (value) => typeof value === 'string' && value.trim() !== '';
 
     const hasPaperlessTokenInput = hasValue(paperlessToken);
+    const hasPaperlessUrlInput = hasValue(paperlessUrl);
+    const normalizedCurrentPaperlessUrl = (currentConfig.PAPERLESS_API_URL || '').replace(/\/api$/, '');
+    const effectivePaperlessUrl = hasPaperlessUrlInput ? paperlessUrl : normalizedCurrentPaperlessUrl;
     const effectivePaperlessToken = hasPaperlessTokenInput ? paperlessToken.trim() : currentConfig.PAPERLESS_API_TOKEN;
     const hasOpenAiKeyInput = hasValue(openaiKey);
     const effectiveOpenAiKey = hasOpenAiKeyInput ? openaiKey.trim() : currentConfig.OPENAI_API_KEY;
@@ -6565,8 +6874,8 @@ router.post('/settings', express.json(), async (req, res) => {
     const externalApiTimeout = req.body.externalApiTimeout || '5000';
     const externalApiTransform = req.body.externalApiTransform || '';
 
-    if (paperlessUrl !== currentConfig.PAPERLESS_API_URL?.replace('/api', '') || hasPaperlessTokenInput) {
-      const isPaperlessValid = await setupService.validatePaperlessConfig(paperlessUrl, effectivePaperlessToken);
+    if ((effectivePaperlessUrl && effectivePaperlessUrl !== normalizedCurrentPaperlessUrl) || hasPaperlessTokenInput) {
+      const isPaperlessValid = await setupService.validatePaperlessConfig(effectivePaperlessUrl, effectivePaperlessToken);
       if (!isPaperlessValid) {
         return res.status(400).json({ 
           error: 'Paperless-ngx connection failed. Please check URL and Token.'
@@ -6576,7 +6885,7 @@ router.post('/settings', express.json(), async (req, res) => {
 
     const updatedConfig = {};
 
-    if (paperlessUrl) updatedConfig.PAPERLESS_API_URL = paperlessUrl + '/api';
+    if (hasPaperlessUrlInput) updatedConfig.PAPERLESS_API_URL = effectivePaperlessUrl + '/api';
     if (typeof paperlessPublicUrl === 'string') updatedConfig.PAPERLESS_PUBLIC_URL = paperlessPublicUrl.trim();
     if (hasPaperlessTokenInput) updatedConfig.PAPERLESS_API_TOKEN = effectivePaperlessToken;
     if (paperlessUsername) updatedConfig.PAPERLESS_USERNAME = paperlessUsername;
@@ -6735,7 +7044,7 @@ router.post('/settings', express.json(), async (req, res) => {
     }
 
     // Handle API key
-    let apiToken = process.env.API_KEY;
+    let apiToken = configFile.getApiKey ? configFile.getApiKey() : (process.env.API_KEY || process.env.PAPERLESS_AI_API_KEY || '');
     if (!apiToken) {
       console.log('Generating new API key');
       apiToken = require('crypto').randomBytes(64).toString('hex');
@@ -6755,6 +7064,8 @@ router.post('/settings', express.json(), async (req, res) => {
     } catch (error) {
       console.log('[ERROR] Error creating custom fields:', error);
     }
+
+    await triggerPythonRestartAfterConfigSave('settings_save');
 
     res.json({ 
       success: true,

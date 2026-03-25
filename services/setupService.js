@@ -15,6 +15,25 @@ class SetupService {
     this.configured = null; // Variable to store the configuration status
   }
 
+  isLegacyConfigSourceMode() {
+    return String(process.env.CONFIG_SOURCE_MODE || 'runtime-first').trim().toLowerCase() === 'legacy';
+  }
+
+  getRuntimeConfigurationSnapshot() {
+    return {
+      PAPERLESS_API_URL: process.env.PAPERLESS_API_URL || '',
+      AI_PROVIDER: process.env.AI_PROVIDER || '',
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+      OLLAMA_API_URL: process.env.OLLAMA_API_URL || '',
+      OLLAMA_MODEL: process.env.OLLAMA_MODEL || '',
+      AZURE_ENDPOINT: process.env.AZURE_ENDPOINT || '',
+      AZURE_API_KEY: process.env.AZURE_API_KEY || '',
+      AZURE_DEPLOYMENT_NAME: process.env.AZURE_DEPLOYMENT_NAME || '',
+      CUSTOM_BASE_URL: process.env.CUSTOM_BASE_URL || '',
+      CUSTOM_MODEL: process.env.CUSTOM_MODEL || ''
+    };
+  }
+
   normalizeEnvironmentValue(value) {
     if (value == null) {
       return '';
@@ -84,13 +103,22 @@ class SetupService {
     }
   }
 
-  async saveRuntimeOverrides(config) {
+  filterProtectedInjectedConfig(configValues) {
+    return Object.fromEntries(
+      Object.entries(configValues || {}).filter(
+        ([key]) => !config.isProtectedRuntimeEnvKey(key)
+      )
+    );
+  }
+
+  async saveRuntimeOverrides(configValues) {
     try {
       const dataDir = path.dirname(this.runtimeOverridesPath);
       await fs.mkdir(dataDir, { recursive: true });
 
+      const persistentConfig = this.filterProtectedInjectedConfig(configValues);
       const normalizedConfig = Object.fromEntries(
-        Object.entries(config || {}).map(([key, value]) => [key, value == null ? '' : String(value)])
+        Object.entries(persistentConfig).map(([key, value]) => [key, value == null ? '' : String(value)])
       );
 
       await fs.writeFile(this.runtimeOverridesPath, JSON.stringify(normalizedConfig, null, 2));
@@ -114,10 +142,15 @@ class SetupService {
   }
 
   async loadConfig() {
+    const runtimeOverrides = this.filterProtectedInjectedConfig(await this.loadRuntimeOverrides());
+
+    if (!this.isLegacyConfigSourceMode()) {
+      return Object.keys(runtimeOverrides).length > 0 ? runtimeOverrides : null;
+    }
+
     try {
-      const runtimeOverrides = await this.loadRuntimeOverrides();
       const envContent = await fs.readFile(this.envPath, 'utf8');
-      const config = {};
+      const configValues = {};
       envContent.split('\n').forEach((line) => {
         const trimmedLine = line.trim();
         if (!trimmedLine || trimmedLine.startsWith('#')) {
@@ -135,18 +168,17 @@ class SetupService {
           return;
         }
 
-        config[key] = this.decodeEnvValue(value);
+        configValues[key] = this.decodeEnvValue(value);
       });
-      return {
-        ...config,
+      return this.filterProtectedInjectedConfig({
+        ...configValues,
         ...runtimeOverrides
-      };
+      });
     } catch (error) {
       if (error.code !== 'ENOENT') {
         console.error('Error loading config:', error.message);
       }
 
-      const runtimeOverrides = await this.loadRuntimeOverrides();
       if (Object.keys(runtimeOverrides).length > 0) {
         return runtimeOverrides;
       }
@@ -159,7 +191,7 @@ class SetupService {
     try {
       // Validate URL to prevent SSRF attacks
       // Allow private IPs since Paperless-ngx is typically deployed in a private network
-      const urlValidation = validateApiUrl(url, this.getSetupUrlValidationOptions());
+      const urlValidation = await validateApiUrl(url, this.getSetupUrlValidationOptions());
       if (!urlValidation.valid) {
         console.error('Paperless URL validation error:', urlValidation.error);
         return false;
@@ -180,7 +212,7 @@ class SetupService {
 
   async validateApiPermissions(url, token) {
     // Validate URL first to prevent SSRF
-    const urlValidation = validateApiUrl(url, this.getSetupUrlValidationOptions());
+    const urlValidation = await validateApiUrl(url, this.getSetupUrlValidationOptions());
     if (!urlValidation.valid) {
       console.error('API URL validation error:', urlValidation.error);
       return { success: false, message: `URL validation failed: ${urlValidation.error}` };
@@ -232,7 +264,7 @@ class SetupService {
   async validateCustomConfig(url, apiKey, model) {
     // Validate URL to prevent SSRF attacks
     // Allow private IPs since custom AI services may be hosted internally
-    const urlValidation = validateApiUrl(url, this.getSetupUrlValidationOptions());
+    const urlValidation = await validateApiUrl(url, this.getSetupUrlValidationOptions());
     if (!urlValidation.valid) {
       console.error('Custom AI URL validation error:', urlValidation.error);
       return false;
@@ -271,7 +303,7 @@ class SetupService {
     try {
       // Validate URL to prevent SSRF attacks
       // Allow private IPs since Ollama is typically hosted locally
-      const urlValidation = validateApiUrl(url, this.getSetupUrlValidationOptions());
+      const urlValidation = await validateApiUrl(url, this.getSetupUrlValidationOptions());
       if (!urlValidation.valid) {
         console.error('Ollama URL validation error:', urlValidation.error);
         return false;
@@ -294,7 +326,7 @@ class SetupService {
     
     // Validate Azure endpoint URL to prevent SSRF attacks
     if (endpoint) {
-      const urlValidation = validateApiUrl(endpoint, { allowPrivateIPs: false });
+      const urlValidation = await validateApiUrl(endpoint, { allowPrivateIPs: false });
       if (!urlValidation.valid) {
         console.error('Azure endpoint URL validation error:', urlValidation.error);
         return false;
@@ -379,11 +411,11 @@ class SetupService {
     return true;
   }
 
-  async saveConfig(config, options = {}) {
+  async saveConfig(configValues, options = {}) {
     try {
       // Validate the new configuration before saving unless explicitly skipped
       if (!options.skipValidation) {
-        await this.validateConfig(config);
+        await this.validateConfig(configValues);
       }
 
       const JSON_STANDARD_PROMPT = `
@@ -401,15 +433,20 @@ class SetupService {
       const dataDir = path.dirname(this.envPath);
       await fs.mkdir(dataDir, { recursive: true });
 
-      const envContent = Object.entries(config)
-        .map(([key, value]) => `${key}=${this.encodeEnvValue(value)}`)
-        .join('\n');
+      const persistentConfig = this.filterProtectedInjectedConfig(configValues);
 
-      await fs.writeFile(this.envPath, envContent);
-      await this.saveRuntimeOverrides(config);
+      if (this.isLegacyConfigSourceMode()) {
+        const envContent = Object.entries(persistentConfig)
+          .map(([key, value]) => `${key}=${this.encodeEnvValue(value)}`)
+          .join('\n');
+
+        await fs.writeFile(this.envPath, envContent);
+      }
+
+      await this.saveRuntimeOverrides(configValues);
       
       // Reload environment variables
-      Object.entries(config).forEach(([key, value]) => {
+      Object.entries(persistentConfig).forEach(([key, value]) => {
         process.env[key] = this.normalizeEnvironmentValue(value);
       });
     } catch (error) {
@@ -450,22 +487,81 @@ class SetupService {
     return false;
   }
 
+  async isDatabaseHealthy() {
+    try {
+      // Attempt a non-intrusive read from the users table to validate database health
+      const documentModel = require('../models/document.js');
+      const users = await documentModel.getUsers();
+      // If we can query without error, database is healthy
+      return Array.isArray(users);
+    } catch (error) {
+      console.error('[SECURITY] Database health check failed:', error.message);
+      return false;
+    }
+  }
+
+  async getSetupState() {
+    try {
+      if (this.isLegacyConfigSourceMode()) {
+        // Legacy mode depends on data/.env as the persisted source.
+        try {
+          await fs.access(this.envPath, fs.constants.F_OK);
+        } catch {
+          return 'first-run';
+        }
+      }
+
+      // Runtime-first mode derives configuration from runtime env + overrides.
+      const config = await this.loadConfig();
+      const effectiveConfig = {
+        ...this.getRuntimeConfigurationSnapshot(),
+        ...(config || {})
+      };
+      const isConfigComplete = this.hasRequiredConfiguration(effectiveConfig);
+
+      if (!isConfigComplete) {
+        return 'partial';
+      }
+
+      // Configuration is complete, check database health
+      const dbHealthy = await this.isDatabaseHealthy();
+
+      if (!dbHealthy) {
+        console.warn('[SECURITY] Setup state: degraded (config exists, database unhealthy)');
+        return 'degraded';
+      }
+
+      // All checks passed
+      return 'configured';
+    } catch (error) {
+      console.error('[SECURITY] Error determining setup state:', error.message);
+      // Conservative: treat unexpected errors as degraded
+      return 'degraded';
+    }
+  }
+
   async isConfigured() {
     if (this.configured !== null) {
       return this.configured;
     }
 
     try {
-      try {
-        await fs.access(this.envPath, fs.constants.F_OK);
-      } catch (err) {
-        console.log('No .env file found. Starting setup process...');
-        this.configured = false;
-        return false;
+      if (this.isLegacyConfigSourceMode()) {
+        try {
+          await fs.access(this.envPath, fs.constants.F_OK);
+        } catch (_err) {
+          console.log('No .env file found. Starting setup process...');
+          this.configured = false;
+          return false;
+        }
       }
 
       const config = await this.loadConfig();
-      if (!this.hasRequiredConfiguration(config)) {
+      const effectiveConfig = {
+        ...this.getRuntimeConfigurationSnapshot(),
+        ...(config || {})
+      };
+      if (!this.hasRequiredConfiguration(effectiveConfig)) {
         console.log('Required configuration is incomplete. Starting setup process...');
         this.configured = false;
         return false;
