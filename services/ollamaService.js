@@ -567,7 +567,7 @@ class OllamaService {
      * @returns {Object} Ollama API response
      */
     async _callOllamaAPI(prompt, systemPrompt, numCtx, schema) {
-        const response = await this.client.post(`${this.apiUrl}/api/generate`, {
+        const requestBody = {
             model: this.model,
             prompt: prompt,
             system: systemPrompt,
@@ -581,7 +581,15 @@ class OllamaService {
                 num_predict: 256,
                 num_ctx: numCtx
             }
-        });
+        };
+
+        // Disable thinking for reasoning models (e.g. Qwen3, DeepSeek-R1)
+        // unless explicitly enabled via OLLAMA_THINK=true
+        if (!config.ollama.think) {
+            requestBody.think = false;
+        }
+
+        const response = await this.client.post(`${this.apiUrl}/api/generate`, requestBody);
 
         if (!response.data) {
             throw new Error('Invalid response from Ollama API');
