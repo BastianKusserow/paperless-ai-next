@@ -508,6 +508,14 @@ function validateCustomFieldValue(fieldName, rawValue, dataType) {
         };
     }
 
+    // Paperless-ngx enforces a 128-character limit on STRING custom fields
+    if (dataType === 'string' && strValue.length > 128) {
+        return {
+            skip: true,
+            warn: `[WARN] Custom field "${fieldName}" value exceeds 128 characters (${strValue.length}), skipping`
+        };
+    }
+
     // All other types: pass the string through unchanged
     return { skip: false, value: strValue };
 }
