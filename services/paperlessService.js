@@ -39,7 +39,7 @@ class PaperlessService {
   initialize() {
     if (!this.client && config.paperless.apiUrl && config.paperless.apiToken) {
       this.client = axios.create({
-        baseURL: config.paperless.apiUrl,
+        baseURL: config.paperless.apiUrl.replace(/\/+$/, '') + '/api',
         headers: {
           'Authorization': `Token ${config.paperless.apiToken}`,
           'Content-Type': 'application/json'
@@ -307,7 +307,7 @@ class PaperlessService {
 
   async initializeWithCredentials(apiUrl, apiToken) {
     this.client = axios.create({
-      baseURL: apiUrl,
+      baseURL: apiUrl.replace(/\/+$/, '') + '/api',
       headers: {
         'Authorization': `Token ${apiToken}`,
         'Content-Type': 'application/json'

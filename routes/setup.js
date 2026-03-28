@@ -4280,7 +4280,7 @@ router.post('/api/setup/paperless/metadata', express.json(), async (req, res) =>
       });
     }
 
-    const initialized = await paperlessService.initializeWithCredentials(`${normalizedUrl}/api`, paperlessToken);
+    const initialized = await paperlessService.initializeWithCredentials(normalizedUrl, paperlessToken);
     if (!initialized) {
       return res.status(400).json({
         success: false,
@@ -4467,7 +4467,7 @@ router.post('/api/setup/complete', express.json(), async (req, res) => {
     const jwtToken = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 
     const finalConfig = {
-      PAPERLESS_API_URL: `${paperlessUrl}/api`,
+      PAPERLESS_API_URL: paperlessUrl,
       PAPERLESS_API_TOKEN: paperlessToken,
       PAPERLESS_USERNAME: paperlessUsername,
       AI_PROVIDER: aiProvider,
@@ -4667,7 +4667,7 @@ router.get('/manual/preview/:id', async (req, res) => {
     console.log('Fetching content for document:', documentId);
     
     const response = await fetch(
-      `${process.env.PAPERLESS_API_URL}/documents/${documentId}/`,
+      `${configFile.paperless.apiUrl}/api/documents/${documentId}/`,
       {
         headers: {
           'Authorization': `Token ${process.env.PAPERLESS_API_TOKEN}`
@@ -6952,7 +6952,7 @@ router.post('/settings', express.json(), async (req, res) => {
 
     const updatedConfig = {};
 
-    if (hasPaperlessUrlInput) updatedConfig.PAPERLESS_API_URL = effectivePaperlessUrl + '/api';
+    if (hasPaperlessUrlInput) updatedConfig.PAPERLESS_API_URL = effectivePaperlessUrl;
     if (typeof paperlessPublicUrl === 'string') updatedConfig.PAPERLESS_PUBLIC_URL = paperlessPublicUrl.trim();
     if (hasPaperlessTokenInput) updatedConfig.PAPERLESS_API_TOKEN = effectivePaperlessToken;
     if (paperlessUsername) updatedConfig.PAPERLESS_USERNAME = paperlessUsername;
