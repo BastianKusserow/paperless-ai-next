@@ -166,9 +166,10 @@ MODEL_CACHE_DIR = "./data/model_cache"
 EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 CROSS_ENCODER_MODEL_NAME = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 COLLECTION_NAME = "documents"
-BM25_WEIGHT = 0.3
-SEMANTIC_WEIGHT = 0.7
+BM25_WEIGHT = float(os.getenv("BM25_WEIGHT", "0.3"))
+SEMANTIC_WEIGHT = float(os.getenv("SEMANTIC_WEIGHT", "0.7"))
 MAX_RESULTS = 20
+RERANK_MAX_CONTENT_CHARS = int(os.getenv("RERANK_MAX_CONTENT_CHARS", "2000"))
 
 # Ensure model cache is persisted across restarts/redeploys
 os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
@@ -1328,27 +1329,34 @@ class SearchEngine:
                 r["score"] = r["score"] / max_keyword_score if max_keyword_score > 0 else 0
         
         if semantic_results:
-            # For semantic search, lower distance is better, so invert the score
+            # For semantic search, lower distance is better, so convert to similarity
+            # First normalize distance to 0-1 range, then invert
+            max_distance = max((r["score"] for r in semantic_results), default=1.0)
+            min_distance = min((r["score"] for r in semantic_results), default=0.0)
+            distance_range = max_distance - min_distance if max_distance != min_distance else 1.0
             for r in semantic_results:
-                # Convert distance to similarity score (1 - normalized_distance)
-                r["score"] = 1 - r["score"] if r["score"] <= 1 else 0
+                # Normalize to 0-1 then invert to get similarity (1 = perfect match)
+                normalized = (r["score"] - min_distance) / distance_range
+                r["score"] = 1 - normalized
         
-        # Add keyword results with weight
+        # Add keyword results with weight (normalize ID to string for consistent merging)
         for result in keyword_results:
-            doc_id = result["id"]
+            doc_id = str(result["id"])
             results_map[doc_id] = {
                 **result,
+                "id": doc_id,
                 "score": result["score"] * BM25_WEIGHT
             }
         
         # Add semantic results with weight
         for result in semantic_results:
-            doc_id = result["id"]
+            doc_id = str(result["id"])
             if doc_id in results_map:
                 results_map[doc_id]["score"] += result["score"] * SEMANTIC_WEIGHT
             else:
                 results_map[doc_id] = {
                     **result,
+                    "id": doc_id,
                     "score": result["score"] * SEMANTIC_WEIGHT
                 }
         
@@ -1367,8 +1375,9 @@ class SearchEngine:
             return []
             
         try:
-            # Prepare pairs for cross-encoder
-            pairs = [(query, f"{result['title']} {result['content'][:500]}" if 'content' in result and result['content'] else result.get('title', '')) 
+            # Prepare pairs for cross-encoder (use more content for better reranking)
+            content_limit = RERANK_MAX_CONTENT_CHARS
+            pairs = [(query, f"{result.get('title', '')} {result.get('content', '')[:content_limit] if result.get('content') else ''}") 
                     for result in results]
             
             # Make sure we have valid pairs
@@ -2061,11 +2070,11 @@ async def initialize_system(force: bool = False, background: bool = True, backgr
         }
     
     # Initialize data manager if needed
-    if not global_state.data_manager.is_initialized:
+    if global_state.data_manager and not global_state.data_manager.is_initialized:
         global_state.data_manager.initialize_models()
     
     # Load documents if needed
-    if not global_state.system_status.data_loaded or force:
+    if global_state.data_manager and (not global_state.system_status.data_loaded or force):
         global_state.data_manager.load_documents(force_refresh=force, check_new=False)
     
     # Initialize search engine

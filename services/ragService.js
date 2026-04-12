@@ -4,6 +4,8 @@ const config = require('../config/config');
 const AIServiceFactory = require('./aiServiceFactory');
 const paperlessService = require('./paperlessService');
 
+const DEFAULT_TIMEOUT = 30000;
+
 class RagService {
   constructor() {
     this.baseUrl = process.env.RAG_SERVICE_URL || 'http://localhost:8000';
@@ -12,14 +14,18 @@ class RagService {
     this.aiStatusTtlMs = Number(process.env.RAG_AI_STATUS_TTL_MS || 300000);
   }
 
+  async _getClient() {
+    return axios.create({ timeout: DEFAULT_TIMEOUT });
+  }
+
   /**
    * Check if the RAG service is available and ready
    * @returns {Promise<{status: string, index_ready: boolean, data_loaded: boolean}>}
    */
   async checkStatus() {
     try {
-      const response = await axios.get(`${this.baseUrl}/status`);
-      //make test call to the LLM service to check if it is available
+      const client = await this._getClient();
+      const response = await client.get(`${this.baseUrl}/status`);
       return response.data;
     } catch (error) {
       console.error('Error checking RAG service status:', error.message);
@@ -40,7 +46,8 @@ class RagService {
    */
   async search(query, filters = {}) {
     try {
-      const response = await axios.post(`${this.baseUrl}/search`, {
+      const client = await this._getClient();
+      const response = await client.post(`${this.baseUrl}/search`, {
         query,
         ...filters
       });
@@ -58,16 +65,22 @@ class RagService {
    */
   async askQuestion(question) {
     try {
+      const client = await this._getClient();
       // 1. Get context from the RAG service
-      const response = await axios.post(`${this.baseUrl}/context`, { 
+      const response = await client.post(`${this.baseUrl}/context`, { 
         question,
         max_sources: 5
       });
       
-      const { context, sources } = response.data;
+      const { context, sources: originalSources } = response.data;
       
       // 2. Fetch full content for each source document using doc_id
       let enhancedContext = context;
+      let sources = originalSources;
+      const failedDocIds = [];
+      const MAX_CONTEXT_TOKENS = 8000;
+      const CHARS_PER_TOKEN = 4;
+      const maxContextChars = MAX_CONTEXT_TOKENS * CHARS_PER_TOKEN;
       
       if (sources && sources.length > 0) {
         // Fetch full document content for each source
@@ -76,18 +89,48 @@ class RagService {
             if (source.doc_id) {
               try {
                 const fullContent = await paperlessService.getDocumentContent(source.doc_id);
-                return `Full document content for ${source.title || 'Document ' + source.doc_id}:\n${fullContent}`;
+                return { docId: source.doc_id, title: source.title, content: fullContent, success: true };
               } catch (error) {
                 console.error(`Error fetching content for document ${source.doc_id}:`, error.message);
-                return '';
+                failedDocIds.push(source.doc_id);
+                return { docId: source.doc_id, title: source.title, content: null, success: false };
               }
             }
-            return '';
+            return null;
           })
         );
         
-        // Combine original context with full document contents
-        enhancedContext = context + '\n\n' + fullDocContents.filter(content => content).join('\n\n');
+        // Build enhanced context with token limit
+        let totalChars = context.length;
+        const includedDocs = [];
+        
+        for (const doc of fullDocContents) {
+          if (!doc || !doc.content) continue;
+          
+          const docText = `Full document content for ${doc.title || 'Document ' + doc.docId}:\n${doc.content}`;
+          
+          // Check if adding this document would exceed the limit
+          if (totalChars + docText.length > maxContextChars) {
+            // Try to fit a truncated version
+            const remainingChars = maxContextChars - totalChars - 50; // 50 for the wrapper text
+            if (remainingChars > 500) {
+              const truncatedText = `Full document content for ${doc.title || 'Document ' + doc.docId}:\n${doc.content.substring(0, remainingChars)}...\n[truncated]`;
+              includedDocs.push(truncatedText);
+              totalChars += truncatedText.length;
+            }
+            break; // No more docs can fit
+          }
+          
+          includedDocs.push(docText);
+          totalChars += docText.length;
+        }
+        
+        if (includedDocs.length > 0) {
+          enhancedContext = context + '\n\n' + includedDocs.join('\n\n');
+        }
+        
+        // Update sources to only include successfully fetched docs
+        sources = sources.filter(s => !failedDocIds.includes(s.doc_id));
       }
       
       // 3. Use AI service to generate an answer based on the enhanced context
@@ -137,7 +180,8 @@ class RagService {
    */
   async indexDocuments(force = false) {
     try {
-      const response = await axios.post(`${this.baseUrl}/indexing/start`, { 
+      const client = await this._getClient();
+      const response = await client.post(`${this.baseUrl}/indexing/start`, { 
         force, 
         background: true 
       });
@@ -154,7 +198,8 @@ class RagService {
    */
   async checkForUpdates() {
     try {
-      const response = await axios.post(`${this.baseUrl}/indexing/check`);
+      const client = await this._getClient();
+      const response = await client.post(`${this.baseUrl}/indexing/check`);
       return response.data;
     } catch (error) {
       console.error('Error checking for updates:', error);
@@ -168,7 +213,8 @@ class RagService {
    */
   async getIndexingStatus() {
     try {
-      const response = await axios.get(`${this.baseUrl}/indexing/status`);
+      const client = await this._getClient();
+      const response = await client.get(`${this.baseUrl}/indexing/status`);
       return response.data;
     } catch (error) {
       console.error('Error getting indexing status:', error);
@@ -183,7 +229,8 @@ class RagService {
    */
   async initialize(force = false) {
     try {
-      const response = await axios.post(`${this.baseUrl}/initialize`, { force });
+      const client = await this._getClient();
+      const response = await client.post(`${this.baseUrl}/initialize`, { force });
       return response.data;
     } catch (error) {
       console.error('Error initializing RAG service:', error);
@@ -197,7 +244,8 @@ class RagService {
    */
   async redownloadModels() {
     try {
-      const response = await axios.post(`${this.baseUrl}/models/redownload`, {
+      const client = await this._getClient();
+      const response = await client.post(`${this.baseUrl}/models/redownload`, {
         background: true
       });
       return response.data;
@@ -216,7 +264,8 @@ class RagService {
     const { reason = 'config_save', delaySeconds = 0.75 } = options;
 
     try {
-      const response = await axios.post(
+      const client = await this._getClient();
+      const response = await client.post(
         `${this.baseUrl}/system/restart`,
         {
           reason,

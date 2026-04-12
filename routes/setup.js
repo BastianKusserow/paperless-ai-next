@@ -5542,6 +5542,9 @@ router.get('/settings', async (req, res) => {
     DISABLE_AUTOMATIC_PROCESSING: process.env.DISABLE_AUTOMATIC_PROCESSING || 'no',
     RAG_SERVICE_ENABLED: process.env.RAG_SERVICE_ENABLED || 'true',
     RAG_SERVICE_URL: process.env.RAG_SERVICE_URL || 'http://localhost:8000',
+    BM25_WEIGHT: process.env.BM25_WEIGHT || '0.3',
+    SEMANTIC_WEIGHT: process.env.SEMANTIC_WEIGHT || '0.7',
+    RERANK_MAX_CONTENT_CHARS: process.env.RERANK_MAX_CONTENT_CHARS || '2000',
     MISTRAL_OCR_ENABLED: process.env.MISTRAL_OCR_ENABLED || 'no',
     MISTRAL_API_KEY: process.env.MISTRAL_API_KEY || '',
     MISTRAL_OCR_MODEL: process.env.MISTRAL_OCR_MODEL || 'mistral-ocr-latest',
@@ -6796,6 +6799,9 @@ router.post('/settings', express.json(), async (req, res) => {
       mistralOcrModel,
       ragServiceEnabled,
       ragServiceUrl,
+      bm25Weight,
+      semanticWeight,
+      rerankMaxContentChars,
       globalRateLimitWindowMs,
       globalRateLimitMax,
       trustProxy,
@@ -7073,6 +7079,9 @@ router.post('/settings', express.json(), async (req, res) => {
       if (mistralOcrModel) updatedConfig.MISTRAL_OCR_MODEL = mistralOcrModel;
       if (ragServiceEnabled) updatedConfig.RAG_SERVICE_ENABLED = ragServiceEnabled;
       if (ragServiceUrl) updatedConfig.RAG_SERVICE_URL = ragServiceUrl;
+      if (bm25Weight) updatedConfig.BM25_WEIGHT = bm25Weight;
+      if (semanticWeight) updatedConfig.SEMANTIC_WEIGHT = semanticWeight;
+      if (rerankMaxContentChars) updatedConfig.RERANK_MAX_CONTENT_CHARS = rerankMaxContentChars;
       if (globalRateLimitWindowMs) updatedConfig.GLOBAL_RATE_LIMIT_WINDOW_MS = globalRateLimitWindowMs;
       if (globalRateLimitMax) updatedConfig.GLOBAL_RATE_LIMIT_MAX = globalRateLimitMax;
       if (typeof trustProxy === 'string') updatedConfig.TRUST_PROXY = trustProxy.trim();
