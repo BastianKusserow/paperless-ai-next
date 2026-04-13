@@ -306,4 +306,146 @@ router.post('/initialize', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/rag/test/query-rewrite:
+ *   post:
+ *     summary: Test query rewriting
+ *     description: Test the query rewriting feature with conversation history
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               query:
+ *                 type: string
+ *                 example: "What was the total amount?"
+ *     responses:
+ *       200:
+ *         description: Rewritten queries
+ */
+router.post('/test/query-rewrite', async (req, res) => {
+  try {
+    const { query } = req.body;
+    
+    if (!query) {
+      return res.status(400).json({ error: 'Query is required' });
+    }
+    
+    const result = await ragService.rewriteQuery(query);
+    res.json(result);
+  } catch (error) {
+    console.error('Error in /api/rag/test/query-rewrite:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/rag/test/history:
+ *   get:
+ *     summary: Get conversation history
+ *     description: Get the current conversation history for query rewriting
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: Conversation history
+ */
+router.get('/test/history', async (req, res) => {
+  try {
+    res.json({
+      history: ragService.conversationHistory,
+      max_messages: ragService.maxHistoryMessages
+    });
+  } catch (error) {
+    console.error('Error in /api/rag/test/history:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/rag/test/history:
+ *   delete:
+ *     summary: Clear conversation history
+ *     description: Clear the conversation history for query rewriting
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: History cleared
+ */
+router.delete('/test/history', async (req, res) => {
+  try {
+    ragService.clearHistory();
+    res.json({ success: true, message: 'Conversation history cleared' });
+  } catch (error) {
+    console.error('Error in /api/rag/test/history:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/rag/test/search:
+ *   post:
+ *     summary: Test search with debug info
+ *     description: Test search and return debug info about retrieval
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               query:
+ *                 type: string
+ *                 example: "invoice"
+ *     responses:
+ *       200:
+ *         description: Search results with debug info
+ */
+router.post('/test/search', async (req, res) => {
+  try {
+    const { query } = req.body;
+    
+    if (!query) {
+      return res.status(400).json({ error: 'Query is required' });
+    }
+    
+    const startTime = Date.now();
+    const results = await ragService.search(query);
+    const searchTime = Date.now() - startTime;
+    
+    res.json({
+      query,
+      results_count: results.length,
+      search_time_ms: searchTime,
+      results: results.slice(0, 10) // Limit to first 10 for response size
+    });
+  } catch (error) {
+    console.error('Error in /api/rag/test/search:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
 module.exports = router;

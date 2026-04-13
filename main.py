@@ -75,9 +75,14 @@ def _is_operator_set(key: str) -> bool:
 
 dotenv_verbose = effective_log_level == "DEBUG"
 data_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', '.env')
+migrated_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', '.env.migrated')
+# Check both .env and .env.migrated (for runtime-first mode)
 if os.path.exists(data_env_path):
     load_dotenv(dotenv_path=data_env_path, verbose=dotenv_verbose)
     logger.debug(f"Loaded environment variables from {data_env_path}")
+elif os.path.exists(migrated_env_path):
+    load_dotenv(dotenv_path=migrated_env_path, verbose=dotenv_verbose)
+    logger.debug(f"Loaded environment variables from {migrated_env_path}")
 else:
     # Fallback to local .env file if none exists in data folder
     local_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
@@ -121,16 +126,49 @@ def _is_missing_or_placeholder(value: Optional[str]) -> bool:
 def _resolve_paperless_config() -> Tuple[Optional[str], Optional[str]]:
     """Resolve paperless URL/token from supported env var aliases.
 
-    Re-reads data/.env on every call for keys that are NOT operator-set, so that
-    values saved through the Node.js Settings UI are picked up without a process
-    restart while Docker-injected values are never overwritten.
+    Re-reads data/.env and data/runtime-overrides.json on every call for keys that
+    are NOT operator-set, so that values saved through the Node.js Settings UI are
+    picked up without a process restart while Docker-injected values are never overwritten.
     """
-    _data_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', '.env')
+    _data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+    _data_env_path = os.path.join(_data_dir, '.env')
+    _migrated_env_path = os.path.join(_data_dir, '.env.migrated')
+    _runtime_overrides_path = os.path.join(_data_dir, 'runtime-overrides.json')
+    
+    # Check both .env and .env.migrated (for runtime-first mode)
     if os.path.exists(_data_env_path):
+        env_file_to_read = _data_env_path
+    elif os.path.exists(_migrated_env_path):
+        env_file_to_read = _migrated_env_path
+    else:
+        env_file_to_read = None
+    
+    # First, read from runtime-overrides.json (Node.js Settings UI saves here)
+    if os.path.exists(_runtime_overrides_path):
+        try:
+            with open(_runtime_overrides_path, 'r') as f:
+                runtime_overrides = json.load(f)
+            logger.debug(f"Reading runtime-overrides.json with keys: {list(runtime_overrides.keys())}")
+            for k, v in runtime_overrides.items():
+                current = os.getenv(k)
+                if not current or _is_missing_or_placeholder(current):
+                    os.environ[k] = v or ''
+                    logger.debug(f"Set {k}={v[:20] if v and len(v) > 20 else v} from runtime-overrides.json")
+        except Exception as e:
+            logger.warning(f"Failed to read runtime-overrides.json: {e}")
+    
+    # Then, read from .env files (legacy)
+    if env_file_to_read:
         from dotenv import dotenv_values
-        for k, v in dotenv_values(_data_env_path).items():
-            if not _is_operator_set(k):
+        logger.debug(f"Reading env from: {env_file_to_read}")
+        env_values = dotenv_values(env_file_to_read)
+        logger.debug(f"Env file values: PAPERLESS_URL={env_values.get('PAPERLESS_URL')}, PAPERLESS_API_TOKEN={'[SET]' if env_values.get('PAPERLESS_API_TOKEN') else '[NOT SET]'}")
+        
+        for k, v in env_values.items():
+            current = os.getenv(k)
+            if not current or _is_missing_or_placeholder(current):
                 os.environ[k] = v or ''
+                logger.debug(f"Set {k}={v[:20] if v and len(v) > 20 else v}...")
 
     paperless_api_url = (
         os.getenv("PAPERLESS_API_URL")
@@ -139,6 +177,9 @@ def _resolve_paperless_config() -> Tuple[Optional[str], Optional[str]]:
         or os.getenv("PAPERLESS_HOST")
     )
     paperless_token = os.getenv("PAPERLESS_TOKEN") or os.getenv("PAPERLESS_API_TOKEN") or os.getenv("PAPERLESS_APIKEY")
+    
+    # Debug: log what we got
+    logger.warning(f"DEBUG: After env resolution - PAPERLESS_URL={paperless_api_url}, PAPERLESS_TOKEN={'[SET]' if paperless_token else '[NOT SET]'}")
 
     if paperless_api_url:
         paperless_api_url = paperless_api_url.strip()
@@ -1319,52 +1360,47 @@ class SearchEngine:
             logger.error("Both search methods failed")
             raise Exception("All search methods failed")
         
-        # Combine results
+        # Use Reciprocal Rank Fusion (RRF) to combine results
+        # RRF is more robust than weighted score addition as it doesn't require score normalization
+        RRF_K = 60  # Standard RRF smoothing constant
+        
+        # Initialize results map for storing result data
         results_map = {}
         
-        # Normalize scores
-        if keyword_results:
-            max_keyword_score = max((r["score"] for r in keyword_results), default=1.0)
-            for r in keyword_results:
-                r["score"] = r["score"] / max_keyword_score if max_keyword_score > 0 else 0
+        # Create ranked lists for RRF
+        keyword_ranked = sorted(keyword_results, key=lambda x: x.get("score", 0), reverse=True)
+        semantic_ranked = sorted(semantic_results, key=lambda x: x.get("score", 0), reverse=True)
         
-        if semantic_results:
-            # For semantic search, lower distance is better, so convert to similarity
-            # First normalize distance to 0-1 range, then invert
-            max_distance = max((r["score"] for r in semantic_results), default=1.0)
-            min_distance = min((r["score"] for r in semantic_results), default=0.0)
-            distance_range = max_distance - min_distance if max_distance != min_distance else 1.0
-            for r in semantic_results:
-                # Normalize to 0-1 then invert to get similarity (1 = perfect match)
-                normalized = (r["score"] - min_distance) / distance_range
-                r["score"] = 1 - normalized
+        # Calculate RRF scores
+        rrf_scores = {}
         
-        # Add keyword results with weight (normalize ID to string for consistent merging)
-        for result in keyword_results:
+        # Process keyword results
+        for rank, result in enumerate(keyword_ranked, 1):
             doc_id = str(result["id"])
-            results_map[doc_id] = {
-                **result,
-                "id": doc_id,
-                "score": result["score"] * BM25_WEIGHT
-            }
+            rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + (1 / (RRF_K + rank))
+            # Store first occurrence of result data
+            if doc_id not in [r.get("id") for r in results_map.values()] if results_map else True:
+                results_map[doc_id] = {**result, "id": doc_id, "source": "bm25", "rrf_rank": rank}
         
-        # Add semantic results with weight
-        for result in semantic_results:
+        # Process semantic results
+        for rank, result in enumerate(semantic_ranked, 1):
             doc_id = str(result["id"])
-            if doc_id in results_map:
-                results_map[doc_id]["score"] += result["score"] * SEMANTIC_WEIGHT
+            rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + (1 / (RRF_K + rank))
+            if doc_id not in results_map:
+                results_map[doc_id] = {**result, "id": doc_id, "source": "semantic", "rrf_rank": rank}
             else:
-                results_map[doc_id] = {
-                    **result,
-                    "id": doc_id,
-                    "score": result["score"] * SEMANTIC_WEIGHT
-                }
+                results_map[doc_id]["source"] = "both"
         
-        # Convert map to list and sort by score
+        # Apply RRF scores to combined results
         combined_results = list(results_map.values())
+        for result in combined_results:
+            doc_id = str(result["id"])
+            result["score"] = rrf_scores.get(doc_id, 0)
+        
+        # Sort by RRF score
         combined_results.sort(key=lambda x: x["score"], reverse=True)
         
-        logger.info(f"Hybrid search found {len(combined_results)} results")
+        logger.info(f"Hybrid search (RRF) found {len(combined_results)} results")
         return combined_results[:top_k]
     
     def rerank_results(self, query, results, top_k=MAX_RESULTS):
@@ -1717,8 +1753,16 @@ async def startup_event():
         
         # Überprüfen, ob .env-Datei existiert
         env_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', '.env')
-        if not os.path.exists(env_file_path):
-            logger.warning(f".env file not found at {os.path.abspath(env_file_path)}")
+        migrated_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', '.env.migrated')
+        # Check both .env and .env.migrated for runtime-first mode
+        if os.path.exists(env_file_path):
+            logger.info(f"Found .env at {os.path.abspath(env_file_path)}")
+        elif os.path.exists(migrated_env_path):
+            # Use .env.migrated as the env file
+            env_file_path = migrated_env_path
+            logger.info(f"Found .env.migrated at {os.path.abspath(env_file_path)}")
+        else:
+            logger.warning(f"No .env file found at {os.path.abspath(env_file_path)}")
             logger.info("Creating example .env file")
             
             # Ensure directory exists
@@ -1730,6 +1774,13 @@ async def startup_event():
                 f.write("PAPERLESS_API_TOKEN=your-api-token\n")
             logger.info(f"Created example .env file at {os.path.abspath(env_file_path)}")
             logger.info("Please edit the .env file with your Paperless-NGX API configuration")
+            logger.warning("Starting with limited functionality due to missing API configuration")
+            
+            # Trotzdem fortfahren mit eingeschränkter Funktionalität
+            global_state.system_status.server_up = True
+            global_state.indexing_status.message = "API configuration missing in .env file"
+            global_state.save_state()
+            return
             logger.warning("Starting with limited functionality due to missing API configuration")
             
             # Trotzdem fortfahren mit eingeschränkter Funktionalität

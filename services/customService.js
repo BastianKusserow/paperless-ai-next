@@ -341,6 +341,9 @@ class CustomOpenAIService {
           }
         ],
         temperature: 0.3,
+        extra_body: {
+          enable_thinking: false
+        }
       });
 
       // Handle response
@@ -430,7 +433,10 @@ class CustomOpenAIService {
           }
         ],
         temperature: 0.7,
-        max_tokens: maxCompletionTokens
+        max_tokens: maxCompletionTokens,
+        extra_body: {
+          enable_thinking: false
+        }
       });
 
       const generatedText = extractChatMessageContent(response?.choices?.[0]?.message, 'Custom OpenAI');

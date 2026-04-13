@@ -12,6 +12,8 @@ class RagService {
     this.aiStatusCache = null;
     this.aiStatusCacheTs = 0;
     this.aiStatusTtlMs = Number(process.env.RAG_AI_STATUS_TTL_MS || 300000);
+    this.conversationHistory = []; // Store last N messages for query rewriting
+    this.maxHistoryMessages = 5;
   }
 
   async _getClient() {
@@ -39,6 +41,88 @@ class RagService {
   }
 
   /**
+   * Rewrite a query using the conversation history for better retrieval
+   * @param {string} currentQuery - The current user question
+   * @returns {Promise<{rewritten_queries: string[], original_query: string}>}
+   */
+  async rewriteQuery(currentQuery) {
+    try {
+      const aiService = AIServiceFactory.getService();
+      
+      // Build conversation context from history
+      const historyContext = this.conversationHistory
+        .slice(-this.maxHistoryMessages)
+        .map(msg => `${msg.role}: ${msg.content}`)
+        .join('\n');
+      
+const prompt = `Given the conversation history and current question, generate 2-3 improved search queries that would retrieve better context for answering the question.
+
+Previous conversation:
+${historyContext || '(No previous messages)'}
+
+Current question: ${currentQuery}
+
+Generate exactly 2-3 search queries as a JSON array of strings. Each query should be self-contained and capture the key information from the conversation that helps retrieve relevant documents. Output ONLY the JSON array, nothing else.`;
+
+      const rewrittenQueries = await aiService.generateText(prompt);
+      console.log(`[Query Rewrite] Raw response: ${rewrittenQueries.substring(0, 200)}`);
+      
+      // Parse the response to extract queries
+      let queries = [];
+      try {
+        // Try to parse as JSON array
+        queries = JSON.parse(rewrittenQueries.trim());
+        if (!Array.isArray(queries)) {
+          console.warn('[Query Rewrite] Response is not an array, using original query');
+          queries = [currentQuery];
+        }
+      } catch (parseError) {
+        // If not JSON, try to extract lines
+        console.warn('[Query Rewrite] Failed to parse JSON, trying line extraction');
+        const lines = rewrittenQueries.split('\n').filter(line => line.trim() && !line.startsWith('```'));
+        queries = lines.slice(0, 3).map(q => q.replace(/^[-*\d.]\s*/, '').trim()).filter(q => q.length > 0);
+        if (queries.length === 0) {
+          console.warn('[Query Rewrite] No queries extracted, using original');
+          queries = [currentQuery];
+        }
+      }
+      
+      return {
+        rewritten_queries: queries,
+        original_query: currentQuery
+      };
+    } catch (error) {
+      console.error('Error rewriting query:', error.message);
+      // Fallback to original query on error
+      return {
+        rewritten_queries: [currentQuery],
+        original_query: currentQuery
+      };
+    }
+  }
+
+  /**
+   * Add a message to conversation history
+   * @param {string} role - 'user' or 'assistant'
+   * @param {string} content - The message content
+   */
+  addToHistory(role, content) {
+    this.conversationHistory.push({ role, content, timestamp: Date.now() });
+    // Keep only last N messages
+    if (this.conversationHistory.length > this.maxHistoryMessages * 2) {
+      this.conversationHistory = this.conversationHistory.slice(-this.maxHistoryMessages);
+    }
+    console.log(`[History] Added ${role} message. History now has ${this.conversationHistory.length} messages.`);
+  }
+
+  /**
+   * Clear conversation history
+   */
+  clearHistory() {
+    this.conversationHistory = [];
+  }
+
+  /**
    * Search for documents matching a query
    * @param {string} query - The search query
    * @param {Object} filters - Optional filters for search
@@ -61,14 +145,35 @@ class RagService {
   /**
    * Ask a question about documents and get an AI-generated answer in the same language as the question
    * @param {string} question - The question to ask
-   * @returns {Promise<{answer: string, sources: Array}>} - AI response and source documents
+   * @param {Object} options - Optional options
+   * @param {boolean} options.enableRewrite - Whether to enable query rewriting (default: true)
+   * @returns {Promise<{answer: string, sources: Array, rewritten_queries?: string[]}>} - AI response and source documents
    */
-  async askQuestion(question) {
+  async askQuestion(question, options = {}) {
+    const enableRewrite = options.enableRewrite !== false;
+    
     try {
       const client = await this._getClient();
+      
+      // Step 0: Optional query rewriting using conversation history
+      let finalQuestion = question;
+      let rewrittenQueries = null;
+      
+      if (enableRewrite && this.conversationHistory.length > 0) {
+        try {
+          const rewriteResult = await this.rewriteQuery(question);
+          rewrittenQueries = rewriteResult.rewritten_queries;
+          // Use the first rewritten query as the main search query
+          finalQuestion = rewrittenQueries[0];
+          console.log('[Query Rewrite] Original:', question, '-> Rewritten:', rewrittenQueries);
+        } catch (rewriteError) {
+          console.error('[Query Rewrite] Failed, using original query:', rewriteError.message);
+        }
+      }
+      
       // 1. Get context from the RAG service
       const response = await client.post(`${this.baseUrl}/context`, { 
-        question,
+        question: finalQuestion,
         max_sources: 5
       });
       
@@ -136,13 +241,24 @@ class RagService {
       // 3. Use AI service to generate an answer based on the enhanced context
       const aiService = AIServiceFactory.getService();
       
+      // Build source reference for citation generation
+      const sourceRef = sources.map((s, idx) => `[${idx + 1}] ${s.title || 'Document ' + s.doc_id}`).join('\n');
+      
+      // Build conversation context for better follow-up understanding
+      const conversationContext = this.conversationHistory.length > 0
+        ? `Previous conversation:\n${this.conversationHistory.map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 300)}`).join('\n')}\n\n`
+        : '';
+      
       // Create a language-agnostic prompt that works in any language
       const prompt = `
         You are a helpful assistant that answers questions about documents.
 
-        Answer the following question precisely, based on the provided documents:
+        ${conversationContext}Answer the following question precisely, based on the provided documents:
 
         Question: ${question}
+
+        Available sources:
+        ${sourceRef}
 
         Context from relevant documents:
         ${enhancedContext}
@@ -152,7 +268,10 @@ class RagService {
         - If the answer is not contained in the documents, respond: "This information is not contained in the documents." (in the same language as the question)
         - Avoid assumptions or speculation beyond the given context
         - Answer in the same language as the question was asked
-        - Do not mention document numbers or source references, answer as if it were a natural conversation
+        - After each sentence or paragraph that uses information from a specific source, insert a citation like [1], [2], etc. at the end of that sentence
+        - Use the source numbers [1], [2], etc. to reference the document sources listed above
+        - Do NOT make up citation numbers - only use citations that correspond to the sources provided
+        - When answering follow-up questions, consider the previous conversation context to understand what "it", "that", "the document", etc. refers to
         `;
 
       let answer;
@@ -163,10 +282,17 @@ class RagService {
         answer = "An error occurred while generating an answer. Please try again later.";
       }
       
-      return {
+      // Add to conversation history for follow-up handling
+      this.addToHistory('user', question);
+      this.addToHistory('assistant', answer);
+      
+      const result = {
         answer,
-        sources
+        sources,
+        ...(rewrittenQueries && { rewritten_queries: rewrittenQueries })
       };
+      
+      return result;
     } catch (error) {
       console.error('Error in askQuestion:', error);
       throw new Error("An error occurred while processing your question. Please try again later.");

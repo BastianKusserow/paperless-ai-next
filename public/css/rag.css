@@ -448,3 +448,29 @@
 .rag-page .markdown ol { padding-left: 1.5rem; margin: 0.75rem 0; }
 .rag-page .markdown code { font-family: monospace; background-color: var(--bg-secondary); padding: 0.125rem 0.25rem; border-radius: 0.25rem; font-size: 0.9em; }
 .rag-page .markdown pre { background-color: var(--bg-secondary); padding: 0.75rem; border-radius: 0.25rem; overflow-x: auto; margin: 0.75rem 0; }
+
+/* Inline citations */
+.rag-page .inline-citation {
+    color: var(--accent-primary);
+    cursor: pointer;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 0 2px;
+    border-radius: 2px;
+    transition: all 0.2s ease;
+}
+
+.rag-page .inline-citation:hover {
+    background-color: var(--accent-primary);
+    color: white;
+}
+
+.rag-page .source.highlighted {
+    animation: source-highlight 2s ease-out;
+    border-color: var(--accent-primary);
+}
+
+@keyframes source-highlight {
+    0% { background-color: rgba(59, 130, 246, 0.3); }
+    100% { background-color: transparent; }
+}
