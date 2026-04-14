@@ -3,8 +3,50 @@ const axios = require('axios');
 const config = require('../config/config');
 const AIServiceFactory = require('./aiServiceFactory');
 const paperlessService = require('./paperlessService');
+const { extractJsonPayload } = require('./serviceUtils');
 
 const DEFAULT_TIMEOUT = 30000;
+
+function extractFallbackFilters(query) {
+  const text = String(query || '').trim();
+  if (!text) {
+    return {};
+  }
+
+  const today = new Date();
+  const formatDate = (date) => date.toISOString().split('T')[0];
+  const filters = {};
+  const normalized = text.toLowerCase();
+
+  if (normalized.includes('last month')) {
+    const fromDate = new Date(today);
+    fromDate.setMonth(fromDate.getMonth() - 1);
+    filters.from_date = formatDate(fromDate);
+    filters.to_date = formatDate(today);
+  } else if (normalized.includes('last week')) {
+    const fromDate = new Date(today);
+    fromDate.setDate(fromDate.getDate() - 7);
+    filters.from_date = formatDate(fromDate);
+    filters.to_date = formatDate(today);
+  } else if (normalized.includes('today')) {
+    filters.from_date = formatDate(today);
+    filters.to_date = formatDate(today);
+  } else if (normalized.includes('this year')) {
+    const fromDate = new Date(today.getFullYear(), 0, 1);
+    filters.from_date = formatDate(fromDate);
+    filters.to_date = formatDate(today);
+  }
+
+  return filters;
+}
+
+function mergeFilters(extractedFilters = {}, explicitFilters = {}) {
+  return {
+    from_date: explicitFilters.from_date || extractedFilters.from_date || undefined,
+    to_date: explicitFilters.to_date || extractedFilters.to_date || undefined,
+    correspondent: explicitFilters.correspondent || extractedFilters.correspondent || undefined
+  };
+}
 
 class RagService {
   constructor() {
@@ -80,15 +122,12 @@ Output: {"queries": ["recent documents", "new documents"], "filters": {"from_dat
 
 If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY valid JSON.`;
 
-      const rewrittenResponse = await aiService.generateText(prompt);
+      const rewrittenResponse = await aiService.generateText(prompt, {
+        temperature: 0,
+        responseFormat: { type: 'json_object' }
+      });
       console.log(`[Query Rewrite] Raw response: ${rewrittenResponse.substring(0, 300)}`);
-      
-      // Clean up markdown code blocks from response
-      const cleanedResponse = rewrittenResponse
-        .replace(/^```json\s*/i, '')
-        .replace(/^```\s*/i, '')
-        .replace(/```$/gm, '')
-        .trim();
+      const cleanedResponse = extractJsonPayload(rewrittenResponse) || rewrittenResponse.trim();
       
       // Parse the response to extract queries and filters
       let queries = [currentQuery];
@@ -96,15 +135,40 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       
       try {
         const parsed = JSON.parse(cleanedResponse);
-        if (parsed.queries && Array.isArray(parsed.queries)) {
+        if (Array.isArray(parsed)) {
+          queries = parsed;
+        } else if (parsed.queries && Array.isArray(parsed.queries)) {
           queries = parsed.queries;
         }
-        if (parsed.filters && typeof parsed.filters === 'object') {
+        if (parsed && parsed.filters && typeof parsed.filters === 'object') {
           filters = parsed.filters;
           console.log('[Query Rewrite] Extracted filters:', JSON.stringify(filters));
         }
       } catch (parseError) {
         console.warn('[Query Rewrite] Failed to parse JSON response:', parseError.message);
+        const extractedJson = extractJsonPayload(rewrittenResponse);
+        if (extractedJson) {
+          try {
+            const parsed = JSON.parse(extractedJson);
+            if (Array.isArray(parsed)) {
+              queries = parsed;
+            } else if (parsed.queries && Array.isArray(parsed.queries)) {
+              queries = parsed.queries;
+            }
+            if (parsed && parsed.filters && typeof parsed.filters === 'object') {
+              filters = parsed.filters;
+              console.log('[Query Rewrite] Extracted filters:', JSON.stringify(filters));
+            }
+            return {
+              rewritten_queries: queries,
+              original_query: currentQuery,
+              filters: Object.keys(filters).length > 0 ? filters : extractFallbackFilters(currentQuery)
+            };
+          } catch (extractedJsonError) {
+            console.warn('[Query Rewrite] Failed to parse extracted JSON payload:', extractedJsonError.message);
+          }
+        }
+
         // Try to extract queries from lines as fallback
         const lines = rewrittenResponse.split('\n').filter(line => line.trim() && !line.startsWith('```'));
         queries = lines.slice(0, 3).map(q => q.replace(/^[-*\d.]\s*/, '').trim()).filter(q => q.length > 0);
@@ -113,10 +177,11 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         }
       }
       
+      const fallbackFilters = Object.keys(filters).length > 0 ? filters : extractFallbackFilters(currentQuery);
       return {
         rewritten_queries: queries,
         original_query: currentQuery,
-        filters
+        filters: fallbackFilters
       };
     } catch (error) {
       console.error('Error rewriting query:', error.message);
@@ -178,6 +243,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
    */
   async askQuestion(question, options = {}) {
     const enableRewrite = options.enableRewrite !== false;
+    const explicitFilters = options.filters || {};
     
     try {
       const client = await this._getClient();
@@ -186,17 +252,19 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       let finalQuestion = question;
       let rewrittenQueries = null;
       let extractedFilters = {};  // Declare at outer scope for answer prompt
+      let finalFilters = mergeFilters({}, explicitFilters);
       
       if (enableRewrite) {
         try {
           const rewriteResult = await this.rewriteQuery(question);
           rewrittenQueries = rewriteResult.rewritten_queries;
           extractedFilters = rewriteResult.filters || {};
+          finalFilters = mergeFilters(extractedFilters, explicitFilters);
           // Use the first rewritten query as the main search query (if different from original)
           if (rewrittenQueries && rewrittenQueries[0] && rewrittenQueries[0] !== question) {
             finalQuestion = rewrittenQueries[0];
           }
-          console.log('[Query Rewrite] Original:', question, '-> Rewritten:', rewrittenQueries, 'Filters:', JSON.stringify(extractedFilters));
+          console.log('[Query Rewrite] Original:', question, '-> Rewritten:', rewrittenQueries, 'Filters:', JSON.stringify(finalFilters));
         } catch (rewriteError) {
           console.error('[Query Rewrite] Failed, using original query:', rewriteError.message);
         }
@@ -206,9 +274,9 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       const response = await client.post(`${this.baseUrl}/context`, { 
         question: finalQuestion,
         max_sources: 5,
-        from_date: extractedFilters.from_date || undefined,
-        to_date: extractedFilters.to_date || undefined,
-        correspondent: extractedFilters.correspondent || undefined
+        from_date: finalFilters.from_date,
+        to_date: finalFilters.to_date,
+        correspondent: finalFilters.correspondent
       });
       
       const { context, sources: originalSources } = response.data;
@@ -285,10 +353,13 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       
       // Build filter context for the model
       let filterContext = '';
-      if (extractedFilters.from_date || extractedFilters.to_date) {
-        const from = extractedFilters.from_date || 'beginning';
-        const to = extractedFilters.to_date || 'now';
+      if (finalFilters.from_date || finalFilters.to_date) {
+        const from = finalFilters.from_date || 'beginning';
+        const to = finalFilters.to_date || 'now';
         filterContext = `The user asked about documents from ${from} to ${to}.`;
+      }
+      if (finalFilters.correspondent) {
+        filterContext += ` The user asked specifically about documents from ${finalFilters.correspondent}.`;
       }
       
       // Create a language-agnostic prompt that works in any language
@@ -312,6 +383,8 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         - If the answer is not contained in the documents, respond: "This information is not contained in the documents." (in the same language as the question)
         - Avoid assumptions or speculation beyond the given context
         - Answer in the same language as the question was asked
+        - Return only the final user-facing answer
+        - Do not include reasoning, chain-of-thought, analysis steps, or notes about how you arrived at the answer
         - After each sentence or paragraph that uses information from a specific source, insert a citation like [1], [2], etc. at the end of that sentence
         - Use the source numbers [1], [2], etc. to reference the document sources listed above
         - Do NOT make up citation numbers - only use citations that correspond to the sources provided
@@ -320,7 +393,10 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
 
       let answer;
       try {
-        answer = await aiService.generateText(prompt);
+        answer = await aiService.generateText(prompt, {
+          temperature: 0.2,
+          enableThinking: false
+        });
       } catch (error) {
         console.error('Error generating answer with AI service:', error);
         answer = "An error occurred while generating an answer. Please try again later.";

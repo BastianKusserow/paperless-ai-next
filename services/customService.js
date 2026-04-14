@@ -341,8 +341,8 @@ class CustomOpenAIService {
           }
         ],
         temperature: 0.3,
-        extra_body: {
-          enable_thinking: false
+        chat_template_kwargs: {
+          enable_thinking: true
         }
       });
 
@@ -402,7 +402,7 @@ class CustomOpenAIService {
    * @param {string} prompt - The prompt to generate text from
    * @returns {Promise<string>} - The generated text
    */
-  async generateText(prompt) {
+  async generateText(prompt, options = {}) {
     try {
       this.initialize();
 
@@ -424,22 +424,36 @@ class CustomOpenAIService {
         );
       }
 
-      const response = await this.client.chat.completions.create({
-        model: model,
+      const requestBody = {
+        model: config.custom.model,
         messages: [
           {
             role: "user",
             content: prompt
           }
         ],
-        temperature: 0.7,
-        max_tokens: maxCompletionTokens,
-        extra_body: {
-          enable_thinking: false
-        }
-      });
+        temperature: options.temperature ?? 0.7,
+        max_tokens: maxCompletionTokens
+      };
 
-      const generatedText = extractChatMessageContent(response?.choices?.[0]?.message, 'Custom OpenAI');
+      if (typeof options.enableThinking === 'boolean') {
+        requestBody.chat_template_kwargs = {
+          enable_thinking: options.enableThinking
+        };
+      } else {
+        requestBody.chat_template_kwargs = {
+          enable_thinking: true
+        };
+      }
+
+      if (options.responseFormat) {
+        requestBody.response_format = options.responseFormat;
+      }
+
+      const response = await this.client.chat.completions.create(requestBody);
+      const message = response?.choices?.[0]?.message;
+
+      const generatedText = extractChatMessageContent(message, 'Custom OpenAI');
       if (!generatedText) {
         throw new Error('Invalid API response structure');
       }

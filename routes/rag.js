@@ -104,13 +104,19 @@ router.post('/search', async (req, res) => {
  */
 router.post('/ask', async (req, res) => {
   try {
-    const { question } = req.body;
+    const { question, from_date, to_date, correspondent } = req.body;
     
     if (!question) {
       return res.status(400).json({ error: 'Question is required' });
     }
     
-    const result = await ragService.askQuestion(question);
+    const result = await ragService.askQuestion(question, {
+      filters: {
+        from_date,
+        to_date,
+        correspondent
+      }
+    });
     res.json(result);
   } catch (error) {
     console.error('Error in /api/rag/ask:', error);
