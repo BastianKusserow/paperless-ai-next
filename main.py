@@ -253,6 +253,9 @@ class IndexingRequest(BaseModel):
 class AskQuestionRequest(BaseModel):
     question: str
     max_sources: int = 5
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
+    correspondent: Optional[str] = None
 
 
 class RestartRequest(BaseModel):
@@ -264,6 +267,8 @@ class SearchResult(BaseModel):
     title: str
     correspondent: str
     date: str
+    tags: str = ''
+    last_updated: str = ''
     score: float
     cross_score: float
     snippet: str
@@ -905,7 +910,8 @@ class DataManager:
                     "title": doc["title"],
                     "correspondent": doc["correspondent"],
                     "created": doc["created"],
-                    "tags": ", ".join(doc["tags"]),
+                    "tags": ", ".join(doc["tags"]) if isinstance(doc.get("tags"), list) else doc.get("tags", ""),
+                    "last_updated": doc.get("last_updated", ""),
                     "hash": doc["hash"]
                 }
                 for doc in batch
@@ -1252,6 +1258,8 @@ class SearchEngine:
                         "title": doc["title"],
                         "correspondent": doc["correspondent"],
                         "date": doc["created"],
+                        "tags": doc.get("tags", ""),
+                        "last_updated": doc.get("last_updated", ""),
                         "score": float(score),
                         "content": doc["content"]
                     })
@@ -1301,6 +1309,8 @@ class SearchEngine:
                             "title": doc["title"],
                             "correspondent": doc["correspondent"],
                             "date": doc["created"],
+                            "tags": doc.get("tags", ""),
+                            "last_updated": doc.get("last_updated", ""),
                             "score": float(distance) if isinstance(distance, (int, float)) else 1.0,
                             "content": doc["content"]
                         })
@@ -1570,16 +1580,22 @@ class SearchEngine:
             formatted_results = []
             for result in reranked_results:
                 try:
-                    snippet = self.create_snippet(query, result["content"])
+                    snippet = self.create_snippet(query, result.get("content", ""))
+                    
+                    tags_val = result.get("tags", "")
+                    if isinstance(tags_val, list):
+                        tags_val = ", ".join(tags_val)
                     
                     formatted_results.append(SearchResult(
-                        title=result["title"] or "Untitled",
-                        correspondent=result["correspondent"] or "",
-                        date=result["date"] or "",
-                        score=result["score"],
+                        title=result.get("title") or "Untitled",
+                        correspondent=result.get("correspondent") or "",
+                        date=result.get("date") or "",
+                        tags=str(tags_val) if tags_val else "",
+                        last_updated=result.get("last_updated", "") or "",
+                        score=result.get("score", 0),
                         cross_score=result.get("cross_score", 0.5),
                         snippet=snippet,
-                        doc_id=result["id"]
+                        doc_id=result.get("id")
                     ))
                 except Exception as item_e:
                     logger.error(f"Error formatting search result: {str(item_e)}")
@@ -1980,14 +1996,23 @@ async def get_context(request: AskQuestionRequest, search_engine: SearchEngine =
     """Get context for a question without answering it"""
     try:
         logger.info(f"Context request: {request.question}")
+        logger.info(f"Filters: from_date={request.from_date}, to_date={request.to_date}, correspondent={request.correspondent}")
         
         # Validate search engine state before using
         if not search_engine.is_initialized or not search_engine.validate_state():
             logger.warning("Search engine validation failed, attempting to reinitialize")
             search_engine.initialize(force_update=False)
         
+        # Build search request with filters
+        search_request = SearchRequest(
+            query=request.question,
+            from_date=request.from_date,
+            to_date=request.to_date,
+            correspondent=request.correspondent
+        )
+        
         # Search for relevant documents
-        search_results = search_engine.search(SearchRequest(query=request.question))
+        search_results = search_engine.search(search_request)
         
         # Check if we got any results
         if not search_results or len(search_results) == 0:
@@ -2011,11 +2036,19 @@ async def get_context(request: AskQuestionRequest, search_engine: SearchEngine =
                 logger.error(f"Invalid search result at index {i}")
                 continue
                 
-            context += f"Document {i+1}: {result.title}\n{result.snippet}\n\n"
+            # Include metadata in context
+            doc_date = result.date if hasattr(result, 'date') and result.date else 'unknown'
+            doc_from = result.correspondent if hasattr(result, 'correspondent') and result.correspondent else 'unknown'
+            doc_tags = result.tags if hasattr(result, 'tags') and result.tags else 'none'
+            doc_updated = result.last_updated if hasattr(result, 'last_updated') and result.last_updated else 'unknown'
+            
+            context += f"Document {i+1}: {result.title}\nDate: {doc_date}, From: {doc_from}, Tags: {doc_tags}, Last Modified: {doc_updated}\nContent: {result.snippet}\n\n"
             sources.append({
                 "title": result.title,
                 "correspondent": result.correspondent,
                 "date": result.date,
+                "tags": result.tags if hasattr(result, 'tags') else '',
+                "last_updated": result.last_updated if hasattr(result, 'last_updated') else '',
                 "snippet": result.snippet,
                 "doc_id": result.doc_id
             })

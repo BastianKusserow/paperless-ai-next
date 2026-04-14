@@ -43,7 +43,7 @@ class RagService {
   /**
    * Rewrite a query using the conversation history for better retrieval
    * @param {string} currentQuery - The current user question
-   * @returns {Promise<{rewritten_queries: string[], original_query: string}>}
+   * @returns {Promise<{rewritten_queries: string[], original_query: string, filters?: {from_date?: string, to_date?: string, correspondent?: string}}>}
    */
   async rewriteQuery(currentQuery) {
     try {
@@ -55,41 +55,68 @@ class RagService {
         .map(msg => `${msg.role}: ${msg.content}`)
         .join('\n');
       
-const prompt = `Given the conversation history and current question, generate 2-3 improved search queries that would retrieve better context for answering the question.
+      const prompt = `Given the conversation history and current question, analyze the question to extract metadata filters.
+
+Current date (for reference): ${new Date().toISOString().split('T')[0]}
 
 Previous conversation:
 ${historyContext || '(No previous messages)'}
 
 Current question: ${currentQuery}
 
-Generate exactly 2-3 search queries as a JSON array of strings. Each query should be self-contained and capture the key information from the conversation that helps retrieve relevant documents. Output ONLY the JSON array, nothing else.`;
+Extract BOTH from_date AND to_date when the question implies a date range:
+- "last month" → from_date = first day of last month, to_date = today
+- "last week" → from_date = 7 days ago, to_date = today  
+- "March 2026" → from_date = "2026-03-01", to_date = "2026-03-31"
+- "this year" → from_date = "2026-01-01", to_date = today
+- "today" → from_date = today, to_date = today
 
-      const rewrittenQueries = await aiService.generateText(prompt);
-      console.log(`[Query Rewrite] Raw response: ${rewrittenQueries.substring(0, 200)}`);
+Respond with a JSON object:
+{"queries": ["search terms"], "filters": {"from_date": "YYYY-MM-DD", "to_date": "YYYY-MM-DD", "correspondent": "optional"}}
+
+Example:
+Input: "What documents were added in the last month?"
+Output: {"queries": ["recent documents", "new documents"], "filters": {"from_date": "2026-03-13", "to_date": "2026-04-13"}}
+
+If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY valid JSON.`;
+
+      const rewrittenResponse = await aiService.generateText(prompt);
+      console.log(`[Query Rewrite] Raw response: ${rewrittenResponse.substring(0, 300)}`);
       
-      // Parse the response to extract queries
-      let queries = [];
+      // Clean up markdown code blocks from response
+      const cleanedResponse = rewrittenResponse
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/```$/gm, '')
+        .trim();
+      
+      // Parse the response to extract queries and filters
+      let queries = [currentQuery];
+      let filters = {};
+      
       try {
-        // Try to parse as JSON array
-        queries = JSON.parse(rewrittenQueries.trim());
-        if (!Array.isArray(queries)) {
-          console.warn('[Query Rewrite] Response is not an array, using original query');
-          queries = [currentQuery];
+        const parsed = JSON.parse(cleanedResponse);
+        if (parsed.queries && Array.isArray(parsed.queries)) {
+          queries = parsed.queries;
+        }
+        if (parsed.filters && typeof parsed.filters === 'object') {
+          filters = parsed.filters;
+          console.log('[Query Rewrite] Extracted filters:', JSON.stringify(filters));
         }
       } catch (parseError) {
-        // If not JSON, try to extract lines
-        console.warn('[Query Rewrite] Failed to parse JSON, trying line extraction');
-        const lines = rewrittenQueries.split('\n').filter(line => line.trim() && !line.startsWith('```'));
+        console.warn('[Query Rewrite] Failed to parse JSON response:', parseError.message);
+        // Try to extract queries from lines as fallback
+        const lines = rewrittenResponse.split('\n').filter(line => line.trim() && !line.startsWith('```'));
         queries = lines.slice(0, 3).map(q => q.replace(/^[-*\d.]\s*/, '').trim()).filter(q => q.length > 0);
         if (queries.length === 0) {
-          console.warn('[Query Rewrite] No queries extracted, using original');
           queries = [currentQuery];
         }
       }
       
       return {
         rewritten_queries: queries,
-        original_query: currentQuery
+        original_query: currentQuery,
+        filters
       };
     } catch (error) {
       console.error('Error rewriting query:', error.message);
@@ -155,26 +182,33 @@ Generate exactly 2-3 search queries as a JSON array of strings. Each query shoul
     try {
       const client = await this._getClient();
       
-      // Step 0: Optional query rewriting using conversation history
+      // Step 0: Optional query rewriting (always run to detect metadata filters)
       let finalQuestion = question;
       let rewrittenQueries = null;
+      let extractedFilters = {};  // Declare at outer scope for answer prompt
       
-      if (enableRewrite && this.conversationHistory.length > 0) {
+      if (enableRewrite) {
         try {
           const rewriteResult = await this.rewriteQuery(question);
           rewrittenQueries = rewriteResult.rewritten_queries;
-          // Use the first rewritten query as the main search query
-          finalQuestion = rewrittenQueries[0];
-          console.log('[Query Rewrite] Original:', question, '-> Rewritten:', rewrittenQueries);
+          extractedFilters = rewriteResult.filters || {};
+          // Use the first rewritten query as the main search query (if different from original)
+          if (rewrittenQueries && rewrittenQueries[0] && rewrittenQueries[0] !== question) {
+            finalQuestion = rewrittenQueries[0];
+          }
+          console.log('[Query Rewrite] Original:', question, '-> Rewritten:', rewrittenQueries, 'Filters:', JSON.stringify(extractedFilters));
         } catch (rewriteError) {
           console.error('[Query Rewrite] Failed, using original query:', rewriteError.message);
         }
       }
       
-      // 1. Get context from the RAG service
+      // 1. Get context from the RAG service (with extracted filters)
       const response = await client.post(`${this.baseUrl}/context`, { 
         question: finalQuestion,
-        max_sources: 5
+        max_sources: 5,
+        from_date: extractedFilters.from_date || undefined,
+        to_date: extractedFilters.to_date || undefined,
+        correspondent: extractedFilters.correspondent || undefined
       });
       
       const { context, sources: originalSources } = response.data;
@@ -249,11 +283,21 @@ Generate exactly 2-3 search queries as a JSON array of strings. Each query shoul
         ? `Previous conversation:\n${this.conversationHistory.map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 300)}`).join('\n')}\n\n`
         : '';
       
+      // Build filter context for the model
+      let filterContext = '';
+      if (extractedFilters.from_date || extractedFilters.to_date) {
+        const from = extractedFilters.from_date || 'beginning';
+        const to = extractedFilters.to_date || 'now';
+        filterContext = `The user asked about documents from ${from} to ${to}.`;
+      }
+      
       // Create a language-agnostic prompt that works in any language
       const prompt = `
         You are a helpful assistant that answers questions about documents.
 
-        ${conversationContext}Answer the following question precisely, based on the provided documents:
+        ${conversationContext}${filterContext}
+        
+        Answer the following question precisely, based on the provided documents:
 
         Question: ${question}
 
