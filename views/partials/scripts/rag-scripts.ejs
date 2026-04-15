@@ -518,7 +518,7 @@
         })
         .then(data => {
             typingIndicator.classList.add('hidden');
-            addAssistantMessage(data.answer, data.sources, data.model);
+            addAssistantMessage(data.answer, data.sources, data.model, data.reasoning);
             isConnected = true;
             updateStatusIndicator('online', 'Online');
         })
@@ -568,11 +568,38 @@
         return `${paperlessPublicUrl}/documents/${documentId}/details`;
     }
 
-    function addAssistantMessage(message, sources = [], modelUsed = null) {
+    function addAssistantMessage(message, sources = [], modelUsed = null, reasoning = '') {
         const messageElement = document.createElement('div');
         messageElement.className = 'message assistant';
 
-        const safeMessage = escapeHtml(message);
+        // Parse inline citations like [1], [2] and convert to clickable spans
+        // First, temporarily replace citations with placeholders to avoid HTML escaping issues
+        let processedMessage = message;
+        const citationMap = {};
+        
+        if (sources && sources.length > 0) {
+            // Replace [N] with placeholder tokens, then escape, then restore as HTML
+            processedMessage = processedMessage.replace(/\[(\d+)\]/g, (match, num) => {
+                const idx = parseInt(num) - 1;
+                if (idx >= 0 && idx < sources.length) {
+                    const token = `__CITATION_${num}__`;
+                    citationMap[token] = `<span class="inline-citation" data-source-index="${idx}" title="Click to view source">[${num}]</span>`;
+                    return token;
+                }
+                return match;
+            });
+        }
+
+        // Now escape the message content
+        let safeMessage = escapeHtml(processedMessage);
+        
+        // Restore citations as HTML
+        for (const [token, html] of Object.entries(citationMap)) {
+            const escapedHtml = escapeHtml(html);
+            // The citation span wasn't escaped, so we just need to replace the token
+            safeMessage = safeMessage.replace(token, html);
+        }
+        
         let formattedMessage = safeMessage.replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
         if (!formattedMessage.startsWith('<p>')) formattedMessage = '<p>' + formattedMessage;
         if (!formattedMessage.endsWith('</p>')) formattedMessage += '</p>';
@@ -583,6 +610,17 @@
             html += `<div class="rag-model-meta">
                         <i class="fas fa-robot"></i> Answered with ${modelUsed}
                     </div>`;
+        }
+
+        if (reasoning) {
+            const safeReasoning = escapeHtml(reasoning).replace(/\n/g, '<br>');
+            html += `<details class="rag-thinking-container">
+                        <summary class="rag-thinking-summary">
+                            <i class="fas fa-brain"></i>
+                            <span>Show thinking</span>
+                        </summary>
+                        <div class="rag-thinking-content">${safeReasoning}</div>
+                    </details>`;
         }
 
         if (sources && sources.length > 0) {
@@ -666,4 +704,23 @@
     function scrollToBottom() {
         chatContainer.scrollTop = chatContainer.scrollHeight;
     }
+
+    // Add click handler for inline citations
+    document.addEventListener('click', function(e) {
+        const citation = e.target.closest('.inline-citation');
+        if (!citation) return;
+        
+        const idx = parseInt(citation.dataset.sourceIndex);
+        // Find the parent assistant message and get its sources
+        const messageEl = citation.closest('.message.assistant');
+        if (!messageEl) return;
+        
+        const sourceEls = messageEl.querySelectorAll('.source');
+        if (sourceEls[idx]) {
+            // Scroll to and highlight the source
+            sourceEls[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            sourceEls[idx].classList.add('highlighted');
+            setTimeout(() => sourceEls[idx].classList.remove('highlighted'), 2000);
+        }
+    });
 </script>

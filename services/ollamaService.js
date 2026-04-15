@@ -720,7 +720,7 @@ class OllamaService {
      * @param {string} prompt - The prompt to generate text from
      * @returns {Promise<string>} - The generated text
      */
-    async generateText(prompt) {
+    async generateText(prompt, options = {}) {
         try {
             // Calculate context window size based on prompt length
             const promptTokenCount = this._calculatePromptTokenCount(prompt);
@@ -736,7 +736,7 @@ class OllamaService {
                 system: systemPrompt,
                 stream: false,
                 options: {
-                    temperature: 0.7,
+                    temperature: options.temperature ?? 0.7,
                     top_p: 0.9,
                     num_predict: 1024,
                     num_ctx: numCtx
@@ -753,6 +753,14 @@ class OllamaService {
 
             if (!response.data || !response.data.response) {
                 throw new Error('Invalid response from Ollama API');
+            }
+
+            if (options.returnMessageParts) {
+                return {
+                    text: response.data.response,
+                    content: response.data.response,
+                    reasoningContent: typeof response.data.thinking === 'string' ? response.data.thinking.trim() : ''
+                };
             }
 
             return response.data.response;

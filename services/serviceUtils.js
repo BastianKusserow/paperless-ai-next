@@ -576,32 +576,149 @@ function classifyOcrQueueReasonFromAiError(errorMessage) {
 }
 
 /**
+ * Extract the first balanced JSON object or array from a text blob.
+ * This helps recover structured output when a model prepends reasoning,
+ * markdown fences, or short prose before the actual JSON payload.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function extractJsonPayload(text) {
+    const input = typeof text === 'string' ? text.trim() : '';
+    if (!input) {
+        return '';
+    }
+
+    const fenceMatch = input.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenceMatch?.[1]) {
+        const fenced = fenceMatch[1].trim();
+        if (fenced.startsWith('{') || fenced.startsWith('[')) {
+            return fenced;
+        }
+    }
+
+    const start = input.search(/[\[{]/);
+    if (start === -1) {
+        return '';
+    }
+
+    const stack = [];
+    let inString = false;
+    let escaped = false;
+
+    for (let i = start; i < input.length; i += 1) {
+        const char = input[i];
+
+        if (inString) {
+            if (escaped) {
+                escaped = false;
+            } else if (char === '\\') {
+                escaped = true;
+            } else if (char === '"') {
+                inString = false;
+            }
+            continue;
+        }
+
+        if (char === '"') {
+            inString = true;
+            continue;
+        }
+
+        if (char === '{' || char === '[') {
+            stack.push(char);
+            continue;
+        }
+
+        if (char === '}' || char === ']') {
+            const last = stack[stack.length - 1];
+            const closesObject = char === '}' && last === '{';
+            const closesArray = char === ']' && last === '[';
+
+            if (!closesObject && !closesArray) {
+                return '';
+            }
+
+            stack.pop();
+            if (stack.length === 0) {
+                return input.slice(start, i + 1).trim();
+            }
+        }
+    }
+
+    return '';
+}
+
+function splitReasoningFromContent(content) {
+    const text = typeof content === 'string' ? content.trim() : '';
+    if (!text) {
+        return { content: '', reasoningContent: '' };
+    }
+
+    const thinkTagMatch = text.match(/^<think>([\s\S]*?)<\/think>\s*([\s\S]*)$/i);
+    if (thinkTagMatch) {
+        return {
+            reasoningContent: thinkTagMatch[1].trim(),
+            content: thinkTagMatch[2].trim()
+        };
+    }
+
+    const finalAnswerMatch = text.match(/([\s\S]*?)(?:^|\n)(?:final answer|answer)\s*:\s*([\s\S]*)$/im);
+    if (finalAnswerMatch) {
+        return {
+            reasoningContent: finalAnswerMatch[1].trim(),
+            content: finalAnswerMatch[2].trim()
+        };
+    }
+
+    if (/^thinking process:/i.test(text)) {
+        return {
+            reasoningContent: text,
+            content: ''
+        };
+    }
+
+    return { content: text, reasoningContent: '' };
+}
+
+/**
+ * Extracts assistant message parts from OpenAI-compatible responses.
+ *
+ * @param {Object} message - Assistant message object
+ * @param {string} providerLabel - Provider label for warning logs
+ * @returns {{content: string, reasoningContent: string, text: string}}
+ */
+function extractChatMessageParts(message, providerLabel = 'OpenAI-compatible') {
+    const rawContent = typeof message?.content === 'string' ? message.content.trim() : '';
+    const rawReasoningContent = typeof message?.reasoning_content === 'string'
+        ? message.reasoning_content.trim()
+        : '';
+    const splitContent = rawReasoningContent ? { content: rawContent, reasoningContent: rawReasoningContent } : splitReasoningFromContent(rawContent);
+    const content = splitContent.content;
+    const reasoningContent = rawReasoningContent || splitContent.reasoningContent;
+
+    if (!content) {
+        console.warn(`[WARN] [${providerLabel}] Empty message.content.`);
+    }
+
+    return {
+        content,
+        reasoningContent,
+        text: content
+    };
+}
+
+/**
  * Extracts assistant message content from OpenAI-compatible responses.
- * Falls back to extracting JSON from reasoning_content when content is empty.
+ * Handles thinking/reasoning models by extracting the answer from content
+ * and ignoring the thinking in reasoning_content.
  *
  * @param {Object} message - Assistant message object
  * @param {string} providerLabel - Provider label for warning logs
  * @returns {string} Extracted content or empty string
  */
 function extractChatMessageContent(message, providerLabel = 'OpenAI-compatible') {
-    const content = typeof message?.content === 'string' ? message.content.trim() : '';
-    if (content) {
-        return content;
-    }
-
-    const reasoningContent = typeof message?.reasoning_content === 'string' ? message.reasoning_content.trim() : '';
-    if (!reasoningContent) {
-        return '';
-    }
-
-    const jsonMatch = reasoningContent.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-        console.warn(`[WARN] [${providerLabel}] Empty message.content, using JSON extracted from reasoning_content.`);
-        return jsonMatch[0].trim();
-    }
-
-    console.warn(`[WARN] [${providerLabel}] Empty message.content and no JSON found in reasoning_content.`);
-    return '';
+    return extractChatMessageParts(message, providerLabel).text;
 }
 
 module.exports = {
@@ -615,5 +732,8 @@ module.exports = {
     validateCustomFieldValue,
     shouldQueueForOcrOnAiError,
     classifyOcrQueueReasonFromAiError,
+    extractJsonPayload,
+    splitReasoningFromContent,
+    extractChatMessageParts,
     extractChatMessageContent
 };

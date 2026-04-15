@@ -5545,6 +5545,8 @@ router.get('/settings', async (req, res) => {
     BM25_WEIGHT: process.env.BM25_WEIGHT || '0.3',
     SEMANTIC_WEIGHT: process.env.SEMANTIC_WEIGHT || '0.7',
     RERANK_MAX_CONTENT_CHARS: process.env.RERANK_MAX_CONTENT_CHARS || '2000',
+    CHUNK_SIZE_CHARS: process.env.CHUNK_SIZE_CHARS || '1000',
+    CHUNK_OVERLAP_CHARS: process.env.CHUNK_OVERLAP_CHARS || '200',
     MISTRAL_OCR_ENABLED: process.env.MISTRAL_OCR_ENABLED || 'no',
     MISTRAL_API_KEY: process.env.MISTRAL_API_KEY || '',
     MISTRAL_OCR_MODEL: process.env.MISTRAL_OCR_MODEL || 'mistral-ocr-latest',
@@ -6802,6 +6804,8 @@ router.post('/settings', express.json(), async (req, res) => {
       bm25Weight,
       semanticWeight,
       rerankMaxContentChars,
+      chunkSizeChars,
+      chunkOverlapChars,
       globalRateLimitWindowMs,
       globalRateLimitMax,
       trustProxy,
@@ -6964,10 +6968,13 @@ router.post('/settings', express.json(), async (req, res) => {
     if (paperlessUsername) updatedConfig.PAPERLESS_USERNAME = paperlessUsername;
 
     // Handle AI provider configuration
-    if (aiProvider) {
+    const effectiveAiProvider = aiProvider || currentConfig.AI_PROVIDER || 'openai';
+    const providerChangeRequested = Boolean(aiProvider);
+    if (providerChangeRequested) {
       updatedConfig.AI_PROVIDER = aiProvider;
-      
-      if (aiProvider === 'openai') {
+    }
+
+    if (effectiveAiProvider === 'openai' && (providerChangeRequested || hasOpenAiKeyInput || openaiModel)) {
         if (!effectiveOpenAiKey) {
           return res.status(400).json({
             error: 'OpenAI API key is required when OpenAI provider is selected.'
@@ -6984,8 +6991,8 @@ router.post('/settings', express.json(), async (req, res) => {
           updatedConfig.OPENAI_API_KEY = effectiveOpenAiKey;
         }
         if (openaiModel) updatedConfig.OPENAI_MODEL = openaiModel;
-      } 
-      else if (aiProvider === 'ollama' && (ollamaUrl || ollamaModel)) {
+      }
+      else if (effectiveAiProvider === 'ollama' && (providerChangeRequested || ollamaUrl || ollamaModel)) {
         const isOllamaValid = await setupService.validateOllamaConfig(
           ollamaUrl || currentConfig.OLLAMA_API_URL,
           ollamaModel || currentConfig.OLLAMA_MODEL
@@ -6997,7 +7004,7 @@ router.post('/settings', express.json(), async (req, res) => {
         }
         if (ollamaUrl) updatedConfig.OLLAMA_API_URL = ollamaUrl;
         if (ollamaModel) updatedConfig.OLLAMA_MODEL = ollamaModel;
-      } else if (aiProvider === 'custom') {
+      } else if (effectiveAiProvider === 'custom' && (providerChangeRequested || customBaseUrl || hasCustomApiKeyInput || customModel)) {
         const effectiveCustomBaseUrl = customBaseUrl || currentConfig.CUSTOM_BASE_URL;
         const effectiveCustomModel = customModel || currentConfig.CUSTOM_MODEL;
         const isCustomValid = await setupService.validateCustomConfig(
@@ -7013,7 +7020,7 @@ router.post('/settings', express.json(), async (req, res) => {
         if (hasCustomApiKeyInput) updatedConfig.CUSTOM_API_KEY = effectiveCustomApiKey;
         if (customBaseUrl) updatedConfig.CUSTOM_BASE_URL = customBaseUrl;
         if (customModel) updatedConfig.CUSTOM_MODEL = customModel;
-      } else if (aiProvider === 'azure') {
+      } else if (effectiveAiProvider === 'azure' && (providerChangeRequested || azureEndpoint || hasAzureApiKeyInput || azureDeploymentName || azureApiVersion)) {
         const effectiveAzureEndpoint = azureEndpoint || currentConfig.AZURE_ENDPOINT;
         const effectiveAzureDeployment = azureDeploymentName || currentConfig.AZURE_DEPLOYMENT_NAME;
         const effectiveAzureApiVersion = azureApiVersion || currentConfig.AZURE_API_VERSION;
@@ -7027,7 +7034,6 @@ router.post('/settings', express.json(), async (req, res) => {
         if(hasAzureApiKeyInput) updatedConfig.AZURE_API_KEY = effectiveAzureApiKey;
         if(azureDeploymentName) updatedConfig.AZURE_DEPLOYMENT_NAME = azureDeploymentName;
         if(azureApiVersion) updatedConfig.AZURE_API_VERSION = azureApiVersion;
-      }
     }
 
     // Update general settings
@@ -7082,6 +7088,8 @@ router.post('/settings', express.json(), async (req, res) => {
       if (bm25Weight) updatedConfig.BM25_WEIGHT = bm25Weight;
       if (semanticWeight) updatedConfig.SEMANTIC_WEIGHT = semanticWeight;
       if (rerankMaxContentChars) updatedConfig.RERANK_MAX_CONTENT_CHARS = rerankMaxContentChars;
+      if (chunkSizeChars) updatedConfig.CHUNK_SIZE_CHARS = chunkSizeChars;
+      if (chunkOverlapChars) updatedConfig.CHUNK_OVERLAP_CHARS = chunkOverlapChars;
       if (globalRateLimitWindowMs) updatedConfig.GLOBAL_RATE_LIMIT_WINDOW_MS = globalRateLimitWindowMs;
       if (globalRateLimitMax) updatedConfig.GLOBAL_RATE_LIMIT_MAX = globalRateLimitMax;
       if (typeof trustProxy === 'string') updatedConfig.TRUST_PROXY = trustProxy.trim();

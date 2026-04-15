@@ -3,6 +3,7 @@ const {
   calculateTotalPromptTokens,
   truncateToTokenLimit,
   writePromptToFile,
+  extractChatMessageParts,
   extractChatMessageContent
 } = require('./serviceUtils');
 const OpenAI = require('openai');
@@ -341,6 +342,9 @@ class CustomOpenAIService {
           }
         ],
         temperature: 0.3,
+        chat_template_kwargs: {
+          enable_thinking: true
+        }
       });
 
       // Handle response
@@ -399,7 +403,7 @@ class CustomOpenAIService {
    * @param {string} prompt - The prompt to generate text from
    * @returns {Promise<string>} - The generated text
    */
-  async generateText(prompt) {
+  async generateText(prompt, options = {}) {
     try {
       this.initialize();
 
@@ -409,7 +413,7 @@ class CustomOpenAIService {
 
       const model = config.custom.model;
       const maxContextTokens = Number(config.tokenLimit) || 128000;
-      const desiredCompletionTokens = Number(config.responseTokens) || 1000;
+      const desiredCompletionTokens = Number(options.maxCompletionTokens) || Number(config.responseTokens) || 1000;
       const promptTokens = await calculateTokens(prompt, model);
       const availableCompletionTokens = Math.max(1, maxContextTokens - promptTokens - 64);
       const maxCompletionTokens = Math.max(1, Math.min(desiredCompletionTokens, availableCompletionTokens));
@@ -421,21 +425,46 @@ class CustomOpenAIService {
         );
       }
 
-      const response = await this.client.chat.completions.create({
-        model: model,
+      const requestBody = {
+        model: config.custom.model,
         messages: [
           {
             role: "user",
             content: prompt
           }
         ],
-        temperature: 0.7,
+        temperature: options.temperature ?? 0.7,
         max_tokens: maxCompletionTokens
-      });
+      };
 
-      const generatedText = extractChatMessageContent(response?.choices?.[0]?.message, 'Custom OpenAI');
+      if (typeof options.enableThinking === 'boolean') {
+        requestBody.chat_template_kwargs = {
+          enable_thinking: options.enableThinking
+        };
+      } else {
+        requestBody.chat_template_kwargs = {
+          enable_thinking: true
+        };
+      }
+
+      if (options.responseFormat) {
+        requestBody.response_format = options.responseFormat;
+      }
+
+      const response = await this.client.chat.completions.create(requestBody);
+      const message = response?.choices?.[0]?.message;
+      const messageParts = extractChatMessageParts(message, 'Custom OpenAI');
+      const generatedText = messageParts.text || extractChatMessageContent(message, 'Custom OpenAI');
       if (!generatedText) {
         throw new Error('Invalid API response structure');
+      }
+
+      if (options.returnMessageParts) {
+        return {
+          text: generatedText,
+          content: messageParts.content,
+          reasoningContent: messageParts.reasoningContent
+        };
       }
 
       return generatedText;

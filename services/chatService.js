@@ -144,12 +144,12 @@ class ChatService {
       } else if (aiProvider === 'custom') {
         // Use OpenAI SDK with custom base URL
         const customOpenAI = new OpenAI({
-          baseURL: process.env.CUSTOM_BASE_URL,
-          apiKey: process.env.CUSTOM_API_KEY,
+          baseURL: config.custom.apiUrl,
+          apiKey: config.custom.apiKey,
         });
 
         const stream = await customOpenAI.chat.completions.create({
-          model: process.env.CUSTOM_MODEL,
+          model: config.custom.model,
           messages: chatData.messages,
           stream: true,
         });

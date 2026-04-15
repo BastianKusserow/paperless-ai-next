@@ -3,6 +3,7 @@ const {
   calculateTotalPromptTokens,
   truncateToTokenLimit,
   writePromptToFile,
+  extractChatMessageParts,
   extractChatMessageContent
 } = require('./serviceUtils');
 const OpenAI = require('openai');
@@ -429,7 +430,7 @@ class OpenAIService {
    * @param {string} prompt - The prompt to generate text from
    * @returns {Promise<string>} - The generated text
    */
-  async generateText(prompt) {
+  async generateText(prompt, options = {}) {
     try {
       this.initialize();
 
@@ -439,7 +440,7 @@ class OpenAIService {
 
       const model = process.env.OPENAI_MODEL || config.openai.model;
 
-      const response = await this.client.chat.completions.create({
+      const requestBody = {
         model: model,
         messages: [
           {
@@ -447,12 +448,28 @@ class OpenAIService {
             content: prompt
           }
         ],
-        temperature: 0.7
-      });
+        temperature: options.temperature ?? 0.7
+      };
 
-      const generatedText = extractChatMessageContent(response?.choices?.[0]?.message, 'OpenAI');
+      if (options.responseFormat) {
+        requestBody.response_format = options.responseFormat;
+      }
+
+      const response = await this.client.chat.completions.create(requestBody);
+      const message = response?.choices?.[0]?.message;
+
+      const messageParts = extractChatMessageParts(message, 'OpenAI');
+      const generatedText = messageParts.text || extractChatMessageContent(message, 'OpenAI');
       if (!generatedText) {
         throw new Error('Invalid API response structure');
+      }
+
+      if (options.returnMessageParts) {
+        return {
+          text: generatedText,
+          content: messageParts.content,
+          reasoningContent: messageParts.reasoningContent
+        };
       }
 
       return generatedText;
