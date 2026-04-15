@@ -3,6 +3,7 @@ const {
   calculateTotalPromptTokens,
   truncateToTokenLimit,
   writePromptToFile,
+  extractChatMessageParts,
   extractChatMessageContent
 } = require('./serviceUtils');
 const OpenAI = require('openai');
@@ -412,7 +413,7 @@ class CustomOpenAIService {
 
       const model = config.custom.model;
       const maxContextTokens = Number(config.tokenLimit) || 128000;
-      const desiredCompletionTokens = Number(config.responseTokens) || 1000;
+      const desiredCompletionTokens = Number(options.maxCompletionTokens) || Number(config.responseTokens) || 1000;
       const promptTokens = await calculateTokens(prompt, model);
       const availableCompletionTokens = Math.max(1, maxContextTokens - promptTokens - 64);
       const maxCompletionTokens = Math.max(1, Math.min(desiredCompletionTokens, availableCompletionTokens));
@@ -452,10 +453,18 @@ class CustomOpenAIService {
 
       const response = await this.client.chat.completions.create(requestBody);
       const message = response?.choices?.[0]?.message;
-
-      const generatedText = extractChatMessageContent(message, 'Custom OpenAI');
+      const messageParts = extractChatMessageParts(message, 'Custom OpenAI');
+      const generatedText = messageParts.text || extractChatMessageContent(message, 'Custom OpenAI');
       if (!generatedText) {
         throw new Error('Invalid API response structure');
+      }
+
+      if (options.returnMessageParts) {
+        return {
+          text: generatedText,
+          content: messageParts.content,
+          reasoningContent: messageParts.reasoningContent
+        };
       }
 
       return generatedText;

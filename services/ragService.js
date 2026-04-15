@@ -239,7 +239,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
    * @param {string} question - The question to ask
    * @param {Object} options - Optional options
    * @param {boolean} options.enableRewrite - Whether to enable query rewriting (default: true)
-   * @returns {Promise<{answer: string, sources: Array, rewritten_queries?: string[]}>} - AI response and source documents
+   * @returns {Promise<{answer: string, reasoning?: string, has_reasoning?: boolean, sources: Array, rewritten_queries?: string[]}>} - AI response and source documents
    */
   async askQuestion(question, options = {}) {
     const enableRewrite = options.enableRewrite !== false;
@@ -383,8 +383,8 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         - If the answer is not contained in the documents, respond: "This information is not contained in the documents." (in the same language as the question)
         - Avoid assumptions or speculation beyond the given context
         - Answer in the same language as the question was asked
-        - Return only the final user-facing answer
-        - Do not include reasoning, chain-of-thought, analysis steps, or notes about how you arrived at the answer
+        - If thinking is enabled, you may reason internally, but your visible output must end with a line that starts exactly with "Final Answer:"
+        - Put only the user-facing answer after "Final Answer:" with no extra analysis after it
         - After each sentence or paragraph that uses information from a specific source, insert a citation like [1], [2], etc. at the end of that sentence
         - Use the source numbers [1], [2], etc. to reference the document sources listed above
         - Do NOT make up citation numbers - only use citations that correspond to the sources provided
@@ -392,11 +392,19 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         `;
 
       let answer;
+      let reasoning = '';
       try {
-        answer = await aiService.generateText(prompt, {
+        const answerResult = await aiService.generateText(prompt, {
           temperature: 0.2,
-          enableThinking: false
+          enableThinking: true,
+          returnMessageParts: true
         });
+        if (typeof answerResult === 'string') {
+          answer = answerResult;
+        } else {
+          answer = answerResult?.text || answerResult?.content || '';
+          reasoning = answerResult?.reasoningContent || '';
+        }
       } catch (error) {
         console.error('Error generating answer with AI service:', error);
         answer = "An error occurred while generating an answer. Please try again later.";
@@ -408,6 +416,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       
       const result = {
         answer,
+        ...(reasoning && { reasoning, has_reasoning: true }),
         sources,
         ...(rewrittenQueries && { rewritten_queries: rewrittenQueries })
       };

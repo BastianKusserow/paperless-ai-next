@@ -3,6 +3,7 @@ const {
   calculateTotalPromptTokens,
   truncateToTokenLimit,
   writePromptToFile,
+  extractChatMessageParts,
   extractChatMessageContent
 } = require('./serviceUtils');
 const OpenAI = require('openai');
@@ -455,10 +456,20 @@ class OpenAIService {
       }
 
       const response = await this.client.chat.completions.create(requestBody);
+      const message = response?.choices?.[0]?.message;
 
-      const generatedText = extractChatMessageContent(response?.choices?.[0]?.message, 'OpenAI');
+      const messageParts = extractChatMessageParts(message, 'OpenAI');
+      const generatedText = messageParts.text || extractChatMessageContent(message, 'OpenAI');
       if (!generatedText) {
         throw new Error('Invalid API response structure');
+      }
+
+      if (options.returnMessageParts) {
+        return {
+          text: generatedText,
+          content: messageParts.content,
+          reasoningContent: messageParts.reasoningContent
+        };
       }
 
       return generatedText;

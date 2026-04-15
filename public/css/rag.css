@@ -136,6 +136,40 @@
     color: var(--text-muted);
 }
 
+.rag-page .rag-thinking-container {
+    margin-top: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    background-color: var(--bg-primary);
+    overflow: hidden;
+}
+
+.rag-page .rag-thinking-summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.75rem 0.9rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.rag-page .rag-thinking-summary::-webkit-details-marker {
+    display: none;
+}
+
+.rag-page .rag-thinking-content {
+    padding: 0 0.9rem 0.9rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    max-height: 16rem;
+    overflow: auto;
+    border-top: 1px solid var(--border-color);
+}
+
 .rag-page .input-wrapper {
     padding: 1.5rem;
     background-color: var(--bg-primary);

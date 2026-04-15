@@ -649,6 +649,65 @@ function extractJsonPayload(text) {
     return '';
 }
 
+function splitReasoningFromContent(content) {
+    const text = typeof content === 'string' ? content.trim() : '';
+    if (!text) {
+        return { content: '', reasoningContent: '' };
+    }
+
+    const thinkTagMatch = text.match(/^<think>([\s\S]*?)<\/think>\s*([\s\S]*)$/i);
+    if (thinkTagMatch) {
+        return {
+            reasoningContent: thinkTagMatch[1].trim(),
+            content: thinkTagMatch[2].trim()
+        };
+    }
+
+    const finalAnswerMatch = text.match(/([\s\S]*?)(?:^|\n)(?:final answer|answer)\s*:\s*([\s\S]*)$/im);
+    if (finalAnswerMatch) {
+        return {
+            reasoningContent: finalAnswerMatch[1].trim(),
+            content: finalAnswerMatch[2].trim()
+        };
+    }
+
+    if (/^thinking process:/i.test(text)) {
+        return {
+            reasoningContent: text,
+            content: ''
+        };
+    }
+
+    return { content: text, reasoningContent: '' };
+}
+
+/**
+ * Extracts assistant message parts from OpenAI-compatible responses.
+ *
+ * @param {Object} message - Assistant message object
+ * @param {string} providerLabel - Provider label for warning logs
+ * @returns {{content: string, reasoningContent: string, text: string}}
+ */
+function extractChatMessageParts(message, providerLabel = 'OpenAI-compatible') {
+    const rawContent = typeof message?.content === 'string' ? message.content.trim() : '';
+    const rawReasoningContent = typeof message?.reasoning_content === 'string'
+        ? message.reasoning_content.trim()
+        : '';
+    const splitContent = rawReasoningContent ? { content: rawContent, reasoningContent: rawReasoningContent } : splitReasoningFromContent(rawContent);
+    const content = splitContent.content;
+    const reasoningContent = rawReasoningContent || splitContent.reasoningContent;
+
+    if (!content) {
+        console.warn(`[WARN] [${providerLabel}] Empty message.content.`);
+    }
+
+    return {
+        content,
+        reasoningContent,
+        text: content
+    };
+}
+
 /**
  * Extracts assistant message content from OpenAI-compatible responses.
  * Handles thinking/reasoning models by extracting the answer from content
@@ -659,16 +718,7 @@ function extractJsonPayload(text) {
  * @returns {string} Extracted content or empty string
  */
 function extractChatMessageContent(message, providerLabel = 'OpenAI-compatible') {
-    // For thinking models: reasoning_content contains the thinking, content has the actual answer
-    // Just return content directly - that's where the actual answer is
-    const content = typeof message?.content === 'string' ? message.content.trim() : '';
-    
-    if (content) {
-        return content;
-    }
-    
-    console.warn(`[WARN] [${providerLabel}] Empty message.content.`);
-    return '';
+    return extractChatMessageParts(message, providerLabel).text;
 }
 
 module.exports = {
@@ -683,5 +733,7 @@ module.exports = {
     shouldQueueForOcrOnAiError,
     classifyOcrQueueReasonFromAiError,
     extractJsonPayload,
+    splitReasoningFromContent,
+    extractChatMessageParts,
     extractChatMessageContent
 };

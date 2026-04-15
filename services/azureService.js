@@ -3,6 +3,7 @@ const {
   calculateTotalPromptTokens,
   truncateToTokenLimit,
   writePromptToFile,
+  extractChatMessageParts,
   extractChatMessageContent
 } = require('./serviceUtils');
 const axios = require('axios');
@@ -409,9 +410,19 @@ class AzureOpenAIService {
 
       const response = await this.client.chat.completions.create(requestBody);
 
-      const generatedText = extractChatMessageContent(response?.choices?.[0]?.message, 'AzureOpenAI');
+      const message = response?.choices?.[0]?.message;
+      const messageParts = extractChatMessageParts(message, 'AzureOpenAI');
+      const generatedText = messageParts.text || extractChatMessageContent(message, 'AzureOpenAI');
       if (!generatedText) {
         throw new Error('Invalid API response structure');
+      }
+
+      if (options.returnMessageParts) {
+        return {
+          text: generatedText,
+          content: messageParts.content,
+          reasoningContent: messageParts.reasoningContent
+        };
       }
 
       return generatedText;

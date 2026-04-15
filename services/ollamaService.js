@@ -755,6 +755,14 @@ class OllamaService {
                 throw new Error('Invalid response from Ollama API');
             }
 
+            if (options.returnMessageParts) {
+                return {
+                    text: response.data.response,
+                    content: response.data.response,
+                    reasoningContent: typeof response.data.thinking === 'string' ? response.data.thinking.trim() : ''
+                };
+            }
+
             return response.data.response;
         } catch (error) {
             console.error(`Error generating text with Ollama: ${error.message}`); console.debug(error);;

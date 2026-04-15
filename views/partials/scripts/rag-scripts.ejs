@@ -518,7 +518,7 @@
         })
         .then(data => {
             typingIndicator.classList.add('hidden');
-            addAssistantMessage(data.answer, data.sources, data.model);
+            addAssistantMessage(data.answer, data.sources, data.model, data.reasoning);
             isConnected = true;
             updateStatusIndicator('online', 'Online');
         })
@@ -568,7 +568,7 @@
         return `${paperlessPublicUrl}/documents/${documentId}/details`;
     }
 
-    function addAssistantMessage(message, sources = [], modelUsed = null) {
+    function addAssistantMessage(message, sources = [], modelUsed = null, reasoning = '') {
         const messageElement = document.createElement('div');
         messageElement.className = 'message assistant';
 
@@ -610,6 +610,17 @@
             html += `<div class="rag-model-meta">
                         <i class="fas fa-robot"></i> Answered with ${modelUsed}
                     </div>`;
+        }
+
+        if (reasoning) {
+            const safeReasoning = escapeHtml(reasoning).replace(/\n/g, '<br>');
+            html += `<details class="rag-thinking-container">
+                        <summary class="rag-thinking-summary">
+                            <i class="fas fa-brain"></i>
+                            <span>Show thinking</span>
+                        </summary>
+                        <div class="rag-thinking-content">${safeReasoning}</div>
+                    </details>`;
         }
 
         if (sources && sources.length > 0) {
