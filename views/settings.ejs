@@ -164,6 +164,10 @@
                                     <i class="fas fa-robot"></i>
                                     AI
                                 </button>
+                                <button type="button" class="settings-tab-button flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 border-transparent" data-tab="prompts-tab">
+                                    <i class="fas fa-file-alt"></i>
+                                    Prompts
+                                </button>
                                 <button type="button" class="settings-tab-button flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 border-transparent" data-tab="mfa-tab">
                                     <i class="fas fa-shield"></i>
                                     MFA
@@ -317,6 +321,81 @@
                                 </div>
                             </section>
 
+                        </div>
+
+                        <div id="prompts-tab" class="settings-tab-content space-y-6 hidden">
+                            <section class="space-y-4 settings-section-card">
+                                <div class="flex items-center justify-between">
+                                    <h3 class="text-lg font-semibold">Prompt Templates</h3>
+                                    <button type="button" id="refreshPromptsBtn" class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+                                        <i class="fas fa-refresh mr-1"></i>Refresh
+                                    </button>
+                                </div>
+                                <p class="text-sm text-gray-600">Customize AI prompts using Liquid template syntax. Overrides are saved to <code class="px-1 py-0.5 bg-gray-100 rounded">data/prompts/</code>.</p>
+                            </section>
+
+                            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div class="lg:col-span-1 space-y-3" id="promptListContainer">
+                                    <div id="promptList" class="space-y-2">
+                                        <div class="text-sm text-gray-500 text-center py-4">Loading templates...</div>
+                                    </div>
+                                </div>
+
+                                <div class="lg:col-span-2 space-y-4" id="promptEditorContainer">
+                                    <div class="settings-section-card">
+                                        <div class="flex items-center justify-between mb-4">
+                                            <div>
+                                                <h4 id="promptEditorTitle" class="font-semibold">Select a template</h4>
+                                                <p id="promptEditorDescription" class="text-sm text-gray-500 mt-1"></p>
+                                            </div>
+                                            <div class="flex items-center gap-2">
+                                                <span id="promptOverrideBadge" class="hidden px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded">Custom</span>
+                                                <button type="button" id="resetPromptBtn" class="hidden px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50">
+                                                    <i class="fas fa-undo mr-1"></i>Reset to Default
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div class="space-y-3">
+                                            <div class="flex items-center gap-2">
+                                                <label class="text-sm font-medium">Template Content</label>
+                                                <button type="button" class="text-gray-400 hover:text-gray-600" id="promptVariablesHelp">
+                                                    <i class="fas fa-circle-question"></i>
+                                                </button>
+                                            </div>
+                                            <textarea id="promptEditorContent" rows="16" class="w-full px-3 py-2 font-mono text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Select a template from the list to view its content..." disabled></textarea>
+                                            <div id="promptValidationMessage" class="text-sm hidden"></div>
+                                        </div>
+
+                                        <div class="flex items-center justify-between mt-4 pt-4 border-t">
+                                            <div class="flex items-center gap-2">
+                                                <button type="button" id="previewPromptBtn" class="px-3 py-1.5 border border-gray-300 rounded-lg text-sm hover:bg-gray-50" disabled>
+                                                    <i class="fas fa-eye mr-1"></i>Preview
+                                                </button>
+                                                <select id="previewContextToggle" class="px-2 py-1.5 border border-gray-300 rounded-lg text-sm">
+                                                    <option value="sample">Sample context</option>
+                                                    <option value="live">Live context</option>
+                                                </select>
+                                            </div>
+                                            <button type="button" id="savePromptBtn" class="toolbar-btn toolbar-btn--primary hidden">
+                                                <i class="fas fa-save mr-1"></i>Save Override
+                                            </button>
+                                        </div>
+
+                                        <div id="promptPreviewContainer" class="hidden mt-4 pt-4 border-t">
+                                            <div class="flex items-center gap-2 mb-2">
+                                                <label class="text-sm font-medium">Preview</label>
+                                                <span id="promptPreviewMode" class="text-xs text-gray-500"></span>
+                                            </div>
+                                            <div id="promptPreviewLoading" class="hidden text-sm text-gray-500 py-2">
+                                                <i class="fas fa-spinner fa-spin mr-1"></i>Rendering...
+                                            </div>
+                                            <pre id="promptPreviewContent" class="p-3 bg-gray-50 border border-gray-200 rounded-lg text-sm font-mono whitespace-pre-wrap overflow-x-auto max-h-96 overflow-y-auto"></pre>
+                                            <div id="promptPreviewError" class="hidden text-sm text-red-600 mt-2"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
                         <div id="mfa-tab" class="settings-tab-content space-y-6 hidden">

@@ -456,6 +456,18 @@ class CustomOpenAIService {
       const messageParts = extractChatMessageParts(message, 'Custom OpenAI');
       const generatedText = messageParts.text || extractChatMessageContent(message, 'Custom OpenAI');
       if (!generatedText) {
+        if (options.returnMessageParts) {
+          return {
+            text: '',
+            content: messageParts.content,
+            reasoningContent: messageParts.reasoningContent,
+            providerDiagnostics: {
+              error: 'Invalid API response structure',
+              rawMessage: message || null,
+              usage: response?.usage || null
+            }
+          };
+        }
         throw new Error('Invalid API response structure');
       }
 
@@ -463,7 +475,11 @@ class CustomOpenAIService {
         return {
           text: generatedText,
           content: messageParts.content,
-          reasoningContent: messageParts.reasoningContent
+          reasoningContent: messageParts.reasoningContent,
+          providerDiagnostics: {
+            usage: response?.usage || null,
+            finishReason: response?.choices?.[0]?.finish_reason || null
+          }
         };
       }
 

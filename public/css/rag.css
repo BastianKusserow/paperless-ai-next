@@ -170,6 +170,91 @@
     border-top: 1px solid var(--border-color);
 }
 
+.rag-page .rag-debug-container {
+    margin-top: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.75rem;
+    background-color: var(--bg-primary);
+    overflow: hidden;
+}
+
+.rag-page .rag-debug-summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.75rem 0.9rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.rag-page .rag-debug-summary::-webkit-details-marker,
+.rag-page .rag-debug-step-summary::-webkit-details-marker {
+    display: none;
+}
+
+.rag-page .rag-debug-content {
+    padding: 0 0.9rem 0.9rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.rag-page .rag-debug-step {
+    margin-top: 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.5rem;
+    background-color: var(--bg-secondary);
+}
+
+.rag-page .rag-debug-step-summary {
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.65rem 0.8rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.rag-page .rag-debug-step-body {
+    padding: 0 0.8rem 0.8rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.rag-page .rag-debug-field {
+    margin-top: 0.65rem;
+}
+
+.rag-page .rag-debug-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.rag-page .rag-debug-pre {
+    margin: 0;
+    padding: 0.6rem;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.4rem;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 18rem;
+    overflow: auto;
+}
+
+.rag-page .rag-debug-timestamp {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
 .rag-page .input-wrapper {
     padding: 1.5rem;
     background-color: var(--bg-primary);

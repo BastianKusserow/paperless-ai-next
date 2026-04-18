@@ -50,6 +50,13 @@ const TESTS = {
   'thumbnail-auth-guard': 'test-thumbnail-auth-guard.js',
   'thumbnail-startup-migration': 'test-thumbnail-startup-migration.js',
   'restriction-service': 'test-restriction-service.js',
+  'rag-history-isolation': 'test-rag-history-isolation.js',
+  'rag-lightweight-answer-no-escalation': 'test-rag-lightweight-answer-no-escalation.js',
+  'rag-escalation-fetches-only-requested-docs': 'test-rag-escalation-fetches-only-requested-docs.js',
+  'rag-escalation-cap': 'test-rag-escalation-cap.js',
+  'rag-payment-heuristic-escalation': 'test-rag-payment-heuristic-escalation.js',
+  'rag-debug-trace-shape': 'test-rag-debug-trace-shape.js',
+  'rag-custom-provider-empty-response': 'test-rag-custom-provider-empty-response.js',
   'updated-service': 'test-updated-service.js',
   'ssrf-url-validation': 'test-ssrf-url-validation.js',
   'external-api-ssrf-block': 'test-external-api-ssrf-block.js',
@@ -71,6 +78,15 @@ const AREAS = {
     'thumbnail-startup-migration'
   ],
   prompts: ['restriction-service', 'updated-service'],
+  rag: [
+    'rag-history-isolation',
+    'rag-lightweight-answer-no-escalation',
+    'rag-escalation-fetches-only-requested-docs',
+    'rag-escalation-cap',
+    'rag-payment-heuristic-escalation',
+    'rag-debug-trace-shape',
+    'rag-custom-provider-empty-response'
+  ],
   security: [
     'setup-remote-guard',
     'setup-auth-middleware-guards',

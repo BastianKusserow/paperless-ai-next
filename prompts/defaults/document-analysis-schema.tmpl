@@ -1,0 +1,14 @@
+IMPORTANT: The custom_fields are optional and can be left out if not needed, only try to fill out the values if you find a matching information in the document.
+Do not change the value of field_name, only fill out the values. If the field is about money only add the number without currency and always use a . for decimal places.
+
+{
+  "title": "xxxxx",
+  "correspondent": "xxxxxxxx",
+  "tags": ["Tag1", "Tag2", "Tag3", "Tag4"],
+  "document_type": "Invoice/Contract/...",
+  "document_date": "YYYY-MM-DD",
+  "language": "en/de/es/..."
+  {% if context.customFieldsSchema %},
+  "custom_fields": {{ context.customFieldsSchema }}
+  {% endif %}
+}

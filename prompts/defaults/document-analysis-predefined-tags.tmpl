@@ -1,0 +1,13 @@
+IMPORTANT: Only use the provided tags below. Do not invent new tags. If no tag matches, return an empty tags array.
+
+Allowed tags: {{ context.allowedTags | join: ", " }}
+
+Return JSON only:
+{
+  "title": "...",
+  "correspondent": "...",
+  "tags": ["matched tag1", "matched tag2"],
+  "document_type": "...",
+  "document_date": "YYYY-MM-DD",
+  "language": "..."
+}

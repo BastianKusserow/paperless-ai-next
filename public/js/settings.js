@@ -2340,3 +2340,389 @@ function removeCustomField(button) {
 
 // Clear Tag Cache Button Handler (PERF-002)
 // duplicate clearTagCache handler removed (handled in main submit/event block above)
+
+class PromptSettingsManager {
+    constructor() {
+        this.templates = [];
+        this.currentTemplate = null;
+        this.hasUnsavedChanges = false;
+        this.previewDebounceTimer = null;
+
+        this.listContainer = document.getElementById('promptList');
+        this.editorTitle = document.getElementById('promptEditorTitle');
+        this.editorDescription = document.getElementById('promptEditorDescription');
+        this.editorContent = document.getElementById('promptEditorContent');
+        this.overrideBadge = document.getElementById('promptOverrideBadge');
+        this.resetBtn = document.getElementById('resetPromptBtn');
+        this.previewBtn = document.getElementById('previewPromptBtn');
+        this.saveBtn = document.getElementById('savePromptBtn');
+        this.previewContainer = document.getElementById('promptPreviewContainer');
+        this.previewContent = document.getElementById('promptPreviewContent');
+        this.previewMode = document.getElementById('promptPreviewMode');
+        this.previewLoading = document.getElementById('promptPreviewLoading');
+        this.previewError = document.getElementById('promptPreviewError');
+        this.validationMessage = document.getElementById('promptValidationMessage');
+        this.refreshBtn = document.getElementById('refreshPromptsBtn');
+        this.previewContextToggle = document.getElementById('previewContextToggle');
+        this.variablesHelpBtn = document.getElementById('promptVariablesHelp');
+
+        this.initialize();
+    }
+
+    async initialize() {
+        await this.loadTemplates();
+
+        if (this.refreshBtn) {
+            this.refreshBtn.addEventListener('click', () => this.loadTemplates());
+        }
+
+        if (this.editorContent) {
+            this.editorContent.addEventListener('input', () => this.onContentChange());
+        }
+
+        if (this.resetBtn) {
+            this.resetBtn.addEventListener('click', () => this.resetTemplate());
+        }
+
+        if (this.previewBtn) {
+            this.previewBtn.addEventListener('click', () => this.previewTemplate());
+        }
+
+        if (this.saveBtn) {
+            this.saveBtn.addEventListener('click', () => this.saveTemplate());
+        }
+
+        if (this.variablesHelpBtn) {
+            this.variablesHelpBtn.addEventListener('click', () => this.showVariablesHelp());
+        }
+
+        if (this.previewContextToggle) {
+            this.previewContextToggle.addEventListener('change', () => {
+                if (this.previewContainer && !this.previewContainer.classList.contains('hidden')) {
+                    this.previewTemplate();
+                }
+            });
+        }
+    }
+
+    async loadTemplates() {
+        try {
+            const response = await fetch('/api/rag/prompts');
+            if (!response.ok) throw new Error('Failed to load templates');
+
+            const data = await response.json();
+            this.templates = data.templates || [];
+            this.renderTemplateList();
+        } catch (error) {
+            console.error('Error loading templates:', error);
+            if (this.listContainer) {
+                this.listContainer.innerHTML = '<div class="text-sm text-red-500">Failed to load templates</div>';
+            }
+        }
+    }
+
+    renderTemplateList() {
+        if (!this.listContainer) return;
+
+        const categories = {};
+        for (const template of this.templates) {
+            if (!categories[template.category]) {
+                categories[template.category] = [];
+            }
+            categories[template.category].push(template);
+        }
+
+        let html = '';
+        for (const [category, templates] of Object.entries(categories)) {
+            html += `<div class="text-xs font-semibold text-gray-500 uppercase mt-4 mb-2 first:mt-0">${this.escapeHtml(category)}</div>`;
+            for (const template of templates) {
+                const isActive = this.currentTemplate && this.currentTemplate.id === template.id;
+                const overrideClass = template.isOverridden ? 'border-yellow-400 bg-yellow-50' : '';
+                html += `
+                    <button type="button" class="prompt-template-btn w-full text-left px-3 py-2 rounded-lg border transition-colors ${overrideClass} ${isActive ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}" data-template-id="${this.escapeHtml(template.id)}">
+                        <div class="font-medium text-sm">${this.escapeHtml(template.title)}</div>
+                        <div class="text-xs text-gray-500 truncate mt-0.5">${this.escapeHtml(template.id)}</div>
+                        ${template.isOverridden ? '<span class="text-xs text-yellow-600 mt-1 inline-block"><i class="fas fa-edit mr-1"></i>Custom</span>' : ''}
+                    </button>
+                `;
+            }
+        }
+
+        this.listContainer.innerHTML = html;
+
+        for (const btn of this.listContainer.querySelectorAll('.prompt-template-btn')) {
+            btn.addEventListener('click', () => {
+                const templateId = btn.dataset.templateId;
+                const template = this.templates.find(t => t.id === templateId);
+                if (template) {
+                    this.selectTemplate(template);
+                }
+            });
+        }
+    }
+
+    async selectTemplate(template) {
+        this.currentTemplate = template;
+
+        if (this.editorTitle) {
+            this.editorTitle.textContent = template.title;
+        }
+        if (this.editorDescription) {
+            this.editorDescription.textContent = template.description;
+        }
+
+        if (this.overrideBadge) {
+            this.overrideBadge.classList.toggle('hidden', !template.isOverridden);
+        }
+        if (this.resetBtn) {
+            this.resetBtn.classList.toggle('hidden', !template.isOverridden);
+        }
+
+        try {
+            const response = await fetch(`/api/rag/prompts/${encodeURIComponent(template.id)}`);
+            if (!response.ok) throw new Error('Failed to load template content');
+
+            const data = await response.json();
+            if (this.editorContent) {
+                this.editorContent.value = data.content || '';
+                this.editorContent.disabled = false;
+            }
+            if (this.previewBtn) {
+                this.previewBtn.disabled = false;
+            }
+
+            this.hasUnsavedChanges = false;
+            this.hidePreview();
+            this.clearValidation();
+            this.renderTemplateList();
+        } catch (error) {
+            console.error('Error loading template content:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Failed to load template content'
+            });
+        }
+    }
+
+    onContentChange() {
+        this.hasUnsavedChanges = true;
+        this.clearValidation();
+
+        if (this.saveBtn) {
+            this.saveBtn.classList.remove('hidden');
+        }
+
+        clearTimeout(this.previewDebounceTimer);
+        this.previewDebounceTimer = setTimeout(() => {
+            if (this.previewContainer && !this.previewContainer.classList.contains('hidden')) {
+                this.previewTemplate();
+            }
+        }, 500);
+    }
+
+    async previewTemplate() {
+        if (!this.currentTemplate || !this.editorContent) return;
+
+        const content = this.editorContent.value;
+        const useLiveContext = this.previewContextToggle && this.previewContextToggle.value === 'live';
+
+        if (this.previewContainer) {
+            this.previewContainer.classList.remove('hidden');
+        }
+        if (this.previewLoading) {
+            this.previewLoading.classList.remove('hidden');
+        }
+        if (this.previewContent) {
+            this.previewContent.textContent = '';
+        }
+        if (this.previewError) {
+            this.previewError.classList.add('hidden');
+        }
+        if (this.previewMode) {
+            this.previewMode.textContent = useLiveContext ? '(Live context)' : '(Sample context)';
+        }
+
+        try {
+            const response = await fetch(
+                `/api/rag/prompts/${encodeURIComponent(this.currentTemplate.id)}/preview?useLiveContext=${useLiveContext}`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content })
+                }
+            );
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.details || errorData.error || 'Preview failed');
+            }
+
+            const data = await response.json();
+            if (this.previewContent) {
+                this.previewContent.textContent = data.rendered || '(empty)';
+            }
+        } catch (error) {
+            console.error('Preview error:', error);
+            if (this.previewError) {
+                this.previewError.textContent = `Error: ${error.message}`;
+                this.previewError.classList.remove('hidden');
+            }
+        } finally {
+            if (this.previewLoading) {
+                this.previewLoading.classList.add('hidden');
+            }
+        }
+    }
+
+    hidePreview() {
+        if (this.previewContainer) {
+            this.previewContainer.classList.add('hidden');
+        }
+    }
+
+    async saveTemplate() {
+        if (!this.currentTemplate || !this.editorContent) return;
+
+        const content = this.editorContent.value;
+
+        try {
+            const response = await fetch(`/api/rag/prompts/${encodeURIComponent(this.currentTemplate.id)}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.details || errorData.error || 'Save failed');
+            }
+
+            this.hasUnsavedChanges = false;
+
+            if (this.saveBtn) {
+                this.saveBtn.classList.add('hidden');
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Saved',
+                text: 'Template override saved successfully',
+                timer: 2000,
+                showConfirmButton: false
+            });
+
+            await this.loadTemplates();
+        } catch (error) {
+            console.error('Save error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Save Failed',
+                text: error.message
+            });
+        }
+    }
+
+    async resetTemplate() {
+        if (!this.currentTemplate) return;
+
+        const result = await Swal.fire({
+            title: 'Reset to Default?',
+            text: 'This will remove the custom override and restore the default template.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#d33',
+            confirmButtonText: 'Yes, reset it!'
+        });
+
+        if (!result.isConfirmed) return;
+
+        try {
+            const response = await fetch(`/api/rag/prompts/${encodeURIComponent(this.currentTemplate.id)}/reset`, {
+                method: 'POST'
+            });
+
+            if (!response.ok) {
+                throw new Error('Reset failed');
+            }
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Reset',
+                text: 'Template has been reset to default',
+                timer: 2000,
+                showConfirmButton: false
+            });
+
+            await this.loadTemplates();
+            await this.selectTemplate(this.currentTemplate);
+        } catch (error) {
+            console.error('Reset error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Reset Failed',
+                text: error.message
+            });
+        }
+    }
+
+    showVariablesHelp() {
+        if (!this.currentTemplate) return;
+
+        const variables = this.currentTemplate.variables || [];
+        let html = '<div class="text-left">';
+        html += '<p class="mb-3">Available variables for this template:</p>';
+        html += '<ul class="list-disc pl-5 space-y-1 text-sm">';
+
+        if (variables.length === 0) {
+            html += '<li class="text-gray-500">No variables for this template</li>';
+        } else {
+            for (const v of variables) {
+                html += `<li><code class="bg-gray-100 px-1 rounded">${this.escapeHtml(v)}</code></li>`;
+            }
+        }
+
+        html += '</ul>';
+        html += '<hr class="my-3">';
+        html += '<p class="text-sm"><strong>Common variables:</strong></p>';
+        html += '<ul class="list-disc pl-5 space-y-1 text-sm mt-2">';
+        html += '<li><code class="bg-gray-100 px-1 rounded">context.currentDate</code> - Current date (YYYY-MM-DD)</li>';
+        html += '<li><code class="bg-gray-100 px-1 rounded">context.currentDateTime</code> - Current datetime</li>';
+        html += '<li><code class="bg-gray-100 px-1 rounded">context.languageHint</code> - Detected language</li>';
+        html += '<li><code class="bg-gray-100 px-1 rounded">context.question</code> - User question</li>';
+        html += '<li><code class="bg-gray-100 px-1 rounded">context.conversationHistory</code> - Previous messages</li>';
+        html += '</ul>';
+        html += '</div>';
+
+        Swal.fire({
+            title: 'Template Variables',
+            html,
+            width: '600px',
+            confirmButtonText: 'Got it'
+        });
+    }
+
+    clearValidation() {
+        if (this.validationMessage) {
+            this.validationMessage.textContent = '';
+            this.validationMessage.classList.add('hidden');
+            this.validationMessage.classList.remove('text-red-600', 'text-green-600');
+        }
+    }
+
+    escapeHtml(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+}
+
+let promptSettingsManager = null;
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('promptList')) {
+        promptSettingsManager = new PromptSettingsManager();
+    }
+});

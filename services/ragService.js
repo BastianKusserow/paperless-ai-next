@@ -3,6 +3,7 @@ const axios = require('axios');
 const config = require('../config/config');
 const AIServiceFactory = require('./aiServiceFactory');
 const paperlessService = require('./paperlessService');
+const promptTemplateService = require('./promptTemplateService');
 const { extractJsonPayload } = require('./serviceUtils');
 
 const DEFAULT_TIMEOUT = 30000;
@@ -48,18 +49,253 @@ function mergeFilters(extractedFilters = {}, explicitFilters = {}) {
   };
 }
 
+function detectLanguageHint(text) {
+  const value = String(text || '').trim();
+  if (!value) {
+    return 'en';
+  }
+
+  if (/[äöüß]/i.test(value) || /\b(rechnung|bezahlt|zahlung|welche|dokumente|offen|betrag|korrespondent)\b/i.test(value)) {
+    return 'de';
+  }
+
+  return 'en';
+}
+
+function safeJsonParse(rawValue, fallback = null) {
+  try {
+    return JSON.parse(rawValue);
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function truncateForDebug(value, maxLen = 6000) {
+  const text = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+  if (!text) {
+    return '';
+  }
+
+  return text.length > maxLen ? `${text.slice(0, maxLen)}\n...[truncated]` : text;
+}
+
+function looksLikeGarbageAnswer(text) {
+  const value = String(text || '').trim();
+  if (!value) {
+    return true;
+  }
+
+  const tokenCount = value.split(/\s+/).filter(Boolean).length;
+  const uniqueTokens = new Set(value.toLowerCase().split(/\s+/).filter(Boolean));
+  const alphaCount = (value.match(/[a-zA-ZäöüÄÖÜß]/g) || []).length;
+  const digitCount = (value.match(/\d/g) || []).length;
+  const repeatedHyphenPattern = /(\b[\w-]+-\s*){4,}/i.test(value);
+
+  if (repeatedHyphenPattern) {
+    return true;
+  }
+
+  if (tokenCount >= 6 && uniqueTokens.size <= Math.max(2, Math.floor(tokenCount / 4))) {
+    return true;
+  }
+
+  if (alphaCount > 0 && digitCount > alphaCount * 2) {
+    return true;
+  }
+
+  return false;
+}
+
 class RagService {
   constructor() {
     this.baseUrl = process.env.RAG_SERVICE_URL || 'http://localhost:8000';
+    this.client = axios.create({ timeout: DEFAULT_TIMEOUT });
     this.aiStatusCache = null;
     this.aiStatusCacheTs = 0;
     this.aiStatusTtlMs = Number(process.env.RAG_AI_STATUS_TTL_MS || 300000);
-    this.conversationHistory = []; // Store last N messages for query rewriting
-    this.maxHistoryMessages = 5;
+    this.chatState = new Map();
+    this.maxHistoryTurns = 5;
+    this.maxDebugTraceEntries = 12;
+    this.maxEscalationDocuments = Number(process.env.RAG_MAX_ESCALATION_DOCS || 2);
+    this.documentContentCache = new Map();
   }
 
   async _getClient() {
-    return axios.create({ timeout: DEFAULT_TIMEOUT });
+    return this.client;
+  }
+
+  ensureChatState(chatId = 'default') {
+    if (!this.chatState.has(chatId)) {
+      this.chatState.set(chatId, {
+        history: [],
+        debugTrace: [],
+        lastUpdatedAt: Date.now()
+      });
+    }
+
+    return this.chatState.get(chatId);
+  }
+
+  get conversationHistory() {
+    return this.getHistory('default');
+  }
+
+  set conversationHistory(value) {
+    const state = this.ensureChatState('default');
+    state.history = Array.isArray(value) ? value : [];
+  }
+
+  get maxHistoryMessages() {
+    return this.maxHistoryTurns;
+  }
+
+  getHistory(chatId = 'default') {
+    return this.ensureChatState(chatId).history;
+  }
+
+  getDebugTrace(chatId = 'default') {
+    return this.ensureChatState(chatId).debugTrace;
+  }
+
+  setDebugTrace(chatId = 'default', trace = []) {
+    const state = this.ensureChatState(chatId);
+    state.debugTrace = Array.isArray(trace) ? trace.slice(-this.maxDebugTraceEntries) : [];
+    state.lastUpdatedAt = Date.now();
+  }
+
+  appendDebugTrace(chatId = 'default', entry = {}) {
+    const state = this.ensureChatState(chatId);
+    state.debugTrace.push({
+      timestamp: new Date().toISOString(),
+      ...entry
+    });
+    if (state.debugTrace.length > this.maxDebugTraceEntries) {
+      state.debugTrace = state.debugTrace.slice(-this.maxDebugTraceEntries);
+    }
+    state.lastUpdatedAt = Date.now();
+  }
+
+  buildTurnScopedHistory(history = []) {
+    const turns = [];
+    let currentTurn = null;
+
+    for (const message of history) {
+      if (message.role === 'user') {
+        currentTurn = { user: message, assistant: null };
+        turns.push(currentTurn);
+      } else if (currentTurn && !currentTurn.assistant) {
+        currentTurn.assistant = message;
+      } else {
+        turns.push({ user: null, assistant: message });
+        currentTurn = null;
+      }
+    }
+
+    return turns.slice(-this.maxHistoryTurns).flatMap((turn) => [turn.user, turn.assistant].filter(Boolean));
+  }
+
+  normalizeSource(source = {}, index) {
+    return {
+      index: index + 1,
+      title: source.title || `Document ${source.doc_id || index + 1}`,
+      correspondent: source.correspondent || '',
+      date: source.date || '',
+      tags: source.tags || '',
+      snippet: source.snippet || '',
+      doc_id: source.doc_id,
+      last_updated: source.last_updated || '',
+      document_url: source.document_url || ''
+    };
+  }
+
+  buildLightweightSources(sources = []) {
+    return sources.map((source, index) => this.normalizeSource(source, index));
+  }
+
+  shouldForceEscalation(question, plannerResult = {}) {
+    const normalized = String(question || '').toLowerCase();
+    if (plannerResult.needs_deeper_evidence) {
+      return true;
+    }
+
+    return [
+      'exact',
+      'genau',
+      'quote',
+      'clause',
+      'klausel',
+      'betrag',
+      'amount',
+      'why',
+      'warum',
+      'compare',
+      'vergleich',
+      'paid',
+      'bezahlt',
+      'overdue',
+      'fällig'
+    ].some((token) => normalized.includes(token));
+  }
+
+  hasMixedPaymentSignals(sources = []) {
+    const paidSignals = sources.some((source) => /\bpaid\b/i.test(source.tags || ''));
+    const unpaidSignals = sources.some((source) => !/\bpaid\b/i.test(source.tags || ''));
+    return paidSignals && unpaidSignals;
+  }
+
+  inferEscalationIndexes(question, sources = []) {
+    const normalized = String(question || '').toLowerCase();
+    const asksForPaymentAggregation = /(still have to pay|remaining|left to pay|unpaid|offen|noch zahlen|sum|total|gesamt|bezahlen)/i.test(normalized);
+
+    if (!asksForPaymentAggregation) {
+      return [];
+    }
+
+    const preferred = sources
+      .map((source) => ({ source, index: source.index }))
+      .filter(({ source }) => /invoice|rechnung/i.test(`${source.title} ${source.tags}`))
+      .filter(({ source }) => !/\bpaid\b/i.test(source.tags || ''))
+      .map(({ index }) => index);
+
+    if (preferred.length > 0) {
+      return preferred.slice(0, this.maxEscalationDocuments);
+    }
+
+    return sources.slice(0, this.maxEscalationDocuments).map((source) => source.index);
+  }
+
+  sanitizeRequestedSourceIndexes(requestedSources = [], maxSources) {
+    const safeIndexes = [];
+    for (const value of Array.isArray(requestedSources) ? requestedSources : []) {
+      const index = Number.parseInt(value, 10);
+      if (Number.isInteger(index) && index >= 1 && index <= maxSources && !safeIndexes.includes(index)) {
+        safeIndexes.push(index);
+      }
+    }
+
+    return safeIndexes.slice(0, this.maxEscalationDocuments);
+  }
+
+  async fetchFullDocumentContent(source) {
+    if (!source || !source.doc_id) {
+      return null;
+    }
+
+    const cacheKey = `${source.doc_id}:${source.last_updated || 'unknown'}`;
+    if (this.documentContentCache.has(cacheKey)) {
+      return this.documentContentCache.get(cacheKey);
+    }
+
+    const fullContent = await paperlessService.getDocumentContent(source.doc_id);
+    const cached = {
+      docId: source.doc_id,
+      title: source.title,
+      content: fullContent,
+      success: true,
+      source
+    };
+    this.documentContentCache.set(cacheKey, cached);
+    return cached;
   }
 
   /**
@@ -87,17 +323,32 @@ class RagService {
    * @param {string} currentQuery - The current user question
    * @returns {Promise<{rewritten_queries: string[], original_query: string, filters?: {from_date?: string, to_date?: string, correspondent?: string}}>}
    */
-  async rewriteQuery(currentQuery) {
+  async rewriteQuery(currentQuery, explicitFilters = {}, options = {}) {
     try {
+      const chatId = options.chatId || 'default';
+      const history = this.getHistory(chatId);
+      const debug = options.debug === true;
       const aiService = AIServiceFactory.getService();
       
-      // Build conversation context from history
-      const historyContext = this.conversationHistory
-        .slice(-this.maxHistoryMessages)
-        .map(msg => `${msg.role}: ${msg.content}`)
-        .join('\n');
+      const context = promptTemplateService.buildRewriteContext(
+        currentQuery,
+        history,
+        {},
+        explicitFilters,
+        detectLanguageHint(currentQuery)
+      );
       
-      const prompt = `Given the conversation history and current question, analyze the question to extract metadata filters.
+      let prompt;
+      try {
+        prompt = promptTemplateService.render('rag.query_rewrite', context);
+      } catch (templateError) {
+        console.warn('[Query Rewrite] Template rendering failed, using fallback:', templateError.message);
+        const historyContext = history
+          .slice(-this.maxHistoryTurns * 2)
+          .map(msg => `${msg.role}: ${msg.content}`)
+          .join('\n');
+        
+        prompt = `Given the conversation history and current question, analyze the question to extract metadata filters.
 
 Current date (for reference): ${new Date().toISOString().split('T')[0]}
 
@@ -121,12 +372,19 @@ Input: "What documents were added in the last month?"
 Output: {"queries": ["recent documents", "new documents"], "filters": {"from_date": "2026-03-13", "to_date": "2026-04-13"}}
 
 If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY valid JSON.`;
+      }
 
       const rewrittenResponse = await aiService.generateText(prompt, {
         temperature: 0,
         responseFormat: { type: 'json_object' }
       });
-      console.log(`[Query Rewrite] Raw response: ${rewrittenResponse.substring(0, 300)}`);
+      if (debug) {
+        this.appendDebugTrace(chatId, {
+          stage: 'rewrite',
+          prompt: truncateForDebug(prompt),
+          raw_response: truncateForDebug(rewrittenResponse)
+        });
+      }
       const cleanedResponse = extractJsonPayload(rewrittenResponse) || rewrittenResponse.trim();
       
       // Parse the response to extract queries and filters
@@ -142,7 +400,6 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         }
         if (parsed && parsed.filters && typeof parsed.filters === 'object') {
           filters = parsed.filters;
-          console.log('[Query Rewrite] Extracted filters:', JSON.stringify(filters));
         }
       } catch (parseError) {
         console.warn('[Query Rewrite] Failed to parse JSON response:', parseError.message);
@@ -157,13 +414,19 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
             }
             if (parsed && parsed.filters && typeof parsed.filters === 'object') {
               filters = parsed.filters;
-              console.log('[Query Rewrite] Extracted filters:', JSON.stringify(filters));
             }
-            return {
+            const parsedResult = {
               rewritten_queries: queries,
               original_query: currentQuery,
               filters: Object.keys(filters).length > 0 ? filters : extractFallbackFilters(currentQuery)
             };
+            if (debug) {
+              this.appendDebugTrace(chatId, {
+                stage: 'rewrite_result',
+                parsed: parsedResult
+              });
+            }
+            return parsedResult;
           } catch (extractedJsonError) {
             console.warn('[Query Rewrite] Failed to parse extracted JSON payload:', extractedJsonError.message);
           }
@@ -178,11 +441,18 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       }
       
       const fallbackFilters = Object.keys(filters).length > 0 ? filters : extractFallbackFilters(currentQuery);
-      return {
+      const result = {
         rewritten_queries: queries,
         original_query: currentQuery,
         filters: fallbackFilters
       };
+      if (debug) {
+        this.appendDebugTrace(chatId, {
+          stage: 'rewrite_result',
+          parsed: result
+        });
+      }
+      return result;
     } catch (error) {
       console.error('Error rewriting query:', error.message);
       // Fallback to original query on error
@@ -199,19 +469,139 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
    * @param {string} content - The message content
    */
   addToHistory(role, content) {
-    this.conversationHistory.push({ role, content, timestamp: Date.now() });
-    // Keep only last N messages
-    if (this.conversationHistory.length > this.maxHistoryMessages * 2) {
-      this.conversationHistory = this.conversationHistory.slice(-this.maxHistoryMessages);
-    }
-    console.log(`[History] Added ${role} message. History now has ${this.conversationHistory.length} messages.`);
+    this.addToHistoryForChat('default', role, content);
+  }
+
+  addToHistoryForChat(chatId = 'default', role, content) {
+    const state = this.ensureChatState(chatId);
+    state.history.push({ role, content, timestamp: Date.now() });
+    state.history = this.buildTurnScopedHistory(state.history);
+    state.lastUpdatedAt = Date.now();
   }
 
   /**
    * Clear conversation history
    */
   clearHistory() {
-    this.conversationHistory = [];
+    this.clearHistoryForChat('default');
+  }
+
+  clearHistoryForChat(chatId = 'default') {
+    const state = this.ensureChatState(chatId);
+    state.history = [];
+    state.debugTrace = [];
+    state.lastUpdatedAt = Date.now();
+  }
+
+  buildLightweightPlannerResult(rawText, fallbackAnswer = '') {
+    const cleaned = extractJsonPayload(rawText) || String(rawText || '').trim();
+    const parsed = safeJsonParse(cleaned, null);
+    if (parsed && typeof parsed === 'object') {
+      return {
+        answer: typeof parsed.answer === 'string' ? parsed.answer.trim() : fallbackAnswer,
+        citations: Array.isArray(parsed.citations) ? parsed.citations : [],
+        needs_deeper_evidence: Boolean(parsed.needs_deeper_evidence),
+        required_sources: Array.isArray(parsed.required_sources) ? parsed.required_sources : [],
+        reason: typeof parsed.reason === 'string' ? parsed.reason : '',
+        confidence: typeof parsed.confidence === 'string' ? parsed.confidence : ''
+      };
+    }
+
+    return {
+      answer: String(rawText || fallbackAnswer || '').trim(),
+      citations: [],
+      needs_deeper_evidence: false,
+      required_sources: [],
+      reason: '',
+      confidence: ''
+    };
+  }
+
+  async planAnswerEvidence({ question, chatId, finalFilters, sources, debug }) {
+    const aiService = AIServiceFactory.getService();
+    const languageHint = detectLanguageHint(question);
+    const plannerContext = promptTemplateService.buildAnswerPlannerContext(
+      question,
+      this.getHistory(chatId),
+      finalFilters,
+      sources,
+      languageHint
+    );
+    const prompt = promptTemplateService.render('rag.answer_plan', plannerContext);
+    let plannerPayload;
+    try {
+      plannerPayload = await aiService.generateText(prompt, {
+        temperature: 0,
+        responseFormat: { type: 'json_object' },
+        returnMessageParts: true,
+        enableThinking: true,
+        maxCompletionTokens: Number(process.env.RAG_PLANNER_MAX_COMPLETION_TOKENS || 1200)
+      });
+    } catch (error) {
+      plannerPayload = {
+        text: '',
+        content: '',
+        reasoningContent: '',
+        providerDiagnostics: { error: error.message }
+      };
+    }
+
+    const rawResponse = typeof plannerPayload === 'string'
+      ? plannerPayload
+      : plannerPayload?.text || plannerPayload?.content || plannerPayload?.reasoningContent || '';
+    let plannerResult = this.buildLightweightPlannerResult(rawResponse);
+
+    if (!plannerResult.answer && !plannerResult.needs_deeper_evidence) {
+      plannerResult = {
+        answer: '',
+        citations: [],
+        needs_deeper_evidence: this.shouldForceEscalation(question, plannerResult),
+        required_sources: this.inferEscalationIndexes(question, sources),
+        reason: 'Planner response was empty or unusable; using heuristic escalation.',
+        confidence: 'low'
+      };
+    }
+
+    if (debug) {
+      this.appendDebugTrace(chatId, {
+        stage: 'answer_planner',
+        prompt: truncateForDebug(prompt),
+        raw_response: truncateForDebug(rawResponse),
+        parsed: plannerResult,
+        providerDiagnostics: plannerPayload?.providerDiagnostics || null
+      });
+    }
+    return plannerResult;
+  }
+
+  async fetchRequestedFullDocuments(sources, requestedIndexes = [], debugInfo = null) {
+    const selectedSources = requestedIndexes
+      .map((index) => sources[index - 1])
+      .filter(Boolean)
+      .slice(0, this.maxEscalationDocuments);
+
+    const documents = [];
+    for (const source of selectedSources) {
+      try {
+        const fullDocument = await this.fetchFullDocumentContent(source);
+        if (fullDocument && fullDocument.content) {
+          documents.push({
+            title: source.title || fullDocument.title || '',
+            content: fullDocument.content,
+            correspondent: source.correspondent || '',
+            documentTypeName: source.document_type || '',
+            createdDate: source.date || '',
+            tags: source.tags || ''
+          });
+        }
+      } catch (error) {
+        if (debugInfo) {
+          debugInfo.failures.push({ doc_id: source.doc_id, error: error.message });
+        }
+      }
+    }
+
+    return documents;
   }
 
   /**
@@ -244,27 +634,29 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
   async askQuestion(question, options = {}) {
     const enableRewrite = options.enableRewrite !== false;
     const explicitFilters = options.filters || {};
+    const chatId = options.chatId || 'default';
+    const debug = options.debug === true;
     
     try {
       const client = await this._getClient();
+      if (debug) {
+        this.setDebugTrace(chatId, []);
+      }
       
       // Step 0: Optional query rewriting (always run to detect metadata filters)
       let finalQuestion = question;
       let rewrittenQueries = null;
-      let extractedFilters = {};  // Declare at outer scope for answer prompt
       let finalFilters = mergeFilters({}, explicitFilters);
       
       if (enableRewrite) {
         try {
-          const rewriteResult = await this.rewriteQuery(question);
+          const rewriteResult = await this.rewriteQuery(question, explicitFilters, { chatId, debug });
           rewrittenQueries = rewriteResult.rewritten_queries;
-          extractedFilters = rewriteResult.filters || {};
+          const extractedFilters = rewriteResult.filters || {};
           finalFilters = mergeFilters(extractedFilters, explicitFilters);
-          // Use the first rewritten query as the main search query (if different from original)
           if (rewrittenQueries && rewrittenQueries[0] && rewrittenQueries[0] !== question) {
             finalQuestion = rewrittenQueries[0];
           }
-          console.log('[Query Rewrite] Original:', question, '-> Rewritten:', rewrittenQueries, 'Filters:', JSON.stringify(finalFilters));
         } catch (rewriteError) {
           console.error('[Query Rewrite] Failed, using original query:', rewriteError.message);
         }
@@ -279,117 +671,88 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         correspondent: finalFilters.correspondent
       });
       
-      const { context, sources: originalSources } = response.data;
-      
-      // 2. Fetch full content for each source document using doc_id
-      let enhancedContext = context;
-      let sources = originalSources;
-      const failedDocIds = [];
-      const MAX_CONTEXT_TOKENS = 8000;
-      const CHARS_PER_TOKEN = 4;
-      const maxContextChars = MAX_CONTEXT_TOKENS * CHARS_PER_TOKEN;
-      
-      if (sources && sources.length > 0) {
-        // Fetch full document content for each source
-        const fullDocContents = await Promise.all(
-          sources.map(async (source) => {
-            if (source.doc_id) {
-              try {
-                const fullContent = await paperlessService.getDocumentContent(source.doc_id);
-                return { docId: source.doc_id, title: source.title, content: fullContent, success: true };
-              } catch (error) {
-                console.error(`Error fetching content for document ${source.doc_id}:`, error.message);
-                failedDocIds.push(source.doc_id);
-                return { docId: source.doc_id, title: source.title, content: null, success: false };
-              }
-            }
-            return null;
-          })
-        );
-        
-        // Build enhanced context with token limit
-        let totalChars = context.length;
-        const includedDocs = [];
-        
-        for (const doc of fullDocContents) {
-          if (!doc || !doc.content) continue;
-          
-          const docText = `Full document content for ${doc.title || 'Document ' + doc.docId}:\n${doc.content}`;
-          
-          // Check if adding this document would exceed the limit
-          if (totalChars + docText.length > maxContextChars) {
-            // Try to fit a truncated version
-            const remainingChars = maxContextChars - totalChars - 50; // 50 for the wrapper text
-            if (remainingChars > 500) {
-              const truncatedText = `Full document content for ${doc.title || 'Document ' + doc.docId}:\n${doc.content.substring(0, remainingChars)}...\n[truncated]`;
-              includedDocs.push(truncatedText);
-              totalChars += truncatedText.length;
-            }
-            break; // No more docs can fit
-          }
-          
-          includedDocs.push(docText);
-          totalChars += docText.length;
-        }
-        
-        if (includedDocs.length > 0) {
-          enhancedContext = context + '\n\n' + includedDocs.join('\n\n');
-        }
-        
-        // Update sources to only include successfully fetched docs
-        sources = sources.filter(s => !failedDocIds.includes(s.doc_id));
+      let sources = this.buildLightweightSources(response.data.sources || []);
+      if (debug) {
+        this.appendDebugTrace(chatId, {
+          stage: 'retrieval',
+          query: finalQuestion,
+          filters: finalFilters,
+          sources
+        });
       }
-      
-      // 3. Use AI service to generate an answer based on the enhanced context
+
+      const plannerResult = await this.planAnswerEvidence({
+        question,
+        chatId,
+        finalFilters,
+        sources,
+        debug
+      });
+
+      const heuristicIndexes = this.inferEscalationIndexes(question, sources);
+      const requestedIndexes = this.sanitizeRequestedSourceIndexes(
+        plannerResult.required_sources && plannerResult.required_sources.length > 0
+          ? plannerResult.required_sources
+          : heuristicIndexes,
+        sources.length
+      );
+      const shouldEscalate = (this.shouldForceEscalation(question, plannerResult) || this.hasMixedPaymentSignals(sources)) && requestedIndexes.length > 0;
+      const escalationDebug = { requested_indexes: requestedIndexes, failures: [] };
+      let selectedDocuments = [];
+
+      if (shouldEscalate) {
+        selectedDocuments = await this.fetchRequestedFullDocuments(sources, requestedIndexes, escalationDebug);
+      }
+
+      if (debug) {
+        this.appendDebugTrace(chatId, {
+          stage: 'escalation',
+          planner_requested_sources: plannerResult.required_sources,
+          requested_indexes: requestedIndexes,
+          escalated: shouldEscalate,
+          fetched_documents: selectedDocuments.map((doc, index) => ({
+            index: requestedIndexes[index],
+            title: doc.title,
+            content_preview: truncateForDebug(doc.content, 500)
+          })),
+          failures: escalationDebug.failures
+        });
+      }
+
       const aiService = AIServiceFactory.getService();
-      
-      // Build source reference for citation generation
-      const sourceRef = sources.map((s, idx) => `[${idx + 1}] ${s.title || 'Document ' + s.doc_id}`).join('\n');
-      
-      // Build conversation context for better follow-up understanding
-      const conversationContext = this.conversationHistory.length > 0
-        ? `Previous conversation:\n${this.conversationHistory.map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content.substring(0, 300)}`).join('\n')}\n\n`
-        : '';
-      
-      // Build filter context for the model
-      let filterContext = '';
-      if (finalFilters.from_date || finalFilters.to_date) {
-        const from = finalFilters.from_date || 'beginning';
-        const to = finalFilters.to_date || 'now';
-        filterContext = `The user asked about documents from ${from} to ${to}.`;
+      const history = this.getHistory(chatId);
+      const languageHint = detectLanguageHint(question);
+      let prompt;
+      let providerDiagnostics = null;
+
+      if (shouldEscalate && selectedDocuments.length > 0) {
+        const answerContext = promptTemplateService.buildAnswerContext(
+          question,
+          history,
+          finalFilters,
+          sources,
+          selectedDocuments,
+          languageHint
+        );
+        prompt = promptTemplateService.render('rag.answer_final', answerContext);
+      } else {
+        const answerContext = promptTemplateService.buildAnswerPlannerContext(
+          question,
+          history,
+          finalFilters,
+          sources,
+          languageHint
+        );
+        prompt = promptTemplateService.render('rag.answer_lightweight', answerContext);
       }
-      if (finalFilters.correspondent) {
-        filterContext += ` The user asked specifically about documents from ${finalFilters.correspondent}.`;
+
+      if (debug) {
+        this.appendDebugTrace(chatId, {
+          stage: 'final_answer_prompt',
+          prompt: truncateForDebug(prompt),
+          mode: shouldEscalate && selectedDocuments.length > 0 ? 'deep' : 'lightweight'
+        });
       }
-      
-      // Create a language-agnostic prompt that works in any language
-      const prompt = `
-        You are a helpful assistant that answers questions about documents.
-
-        ${conversationContext}${filterContext}
-        
-        Answer the following question precisely, based on the provided documents:
-
-        Question: ${question}
-
-        Available sources:
-        ${sourceRef}
-
-        Context from relevant documents:
-        ${enhancedContext}
-
-        Important instructions:
-        - Use ONLY information from the provided documents
-        - If the answer is not contained in the documents, respond: "This information is not contained in the documents." (in the same language as the question)
-        - Avoid assumptions or speculation beyond the given context
-        - Answer in the same language as the question was asked
-        - If thinking is enabled, you may reason internally, but your visible output must end with a line that starts exactly with "Final Answer:"
-        - Put only the user-facing answer after "Final Answer:" with no extra analysis after it
-        - After each sentence or paragraph that uses information from a specific source, insert a citation like [1], [2], etc. at the end of that sentence
-        - Use the source numbers [1], [2], etc. to reference the document sources listed above
-        - Do NOT make up citation numbers - only use citations that correspond to the sources provided
-        - When answering follow-up questions, consider the previous conversation context to understand what "it", "that", "the document", etc. refers to
-        `;
 
       let answer;
       let reasoning = '';
@@ -397,28 +760,44 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         const answerResult = await aiService.generateText(prompt, {
           temperature: 0.2,
           enableThinking: true,
-          returnMessageParts: true
+          returnMessageParts: true,
+          maxCompletionTokens: Number(process.env.RAG_ANSWER_MAX_COMPLETION_TOKENS || 2000)
         });
         if (typeof answerResult === 'string') {
           answer = answerResult;
         } else {
           answer = answerResult?.text || answerResult?.content || '';
           reasoning = answerResult?.reasoningContent || '';
+          providerDiagnostics = answerResult?.providerDiagnostics || null;
         }
       } catch (error) {
         console.error('Error generating answer with AI service:', error);
         answer = "An error occurred while generating an answer. Please try again later.";
+        providerDiagnostics = { error: error.message };
+      }
+
+      if ((!answer || looksLikeGarbageAnswer(answer)) && plannerResult.answer && !looksLikeGarbageAnswer(plannerResult.answer) && !shouldEscalate) {
+        answer = plannerResult.answer;
       }
       
       // Add to conversation history for follow-up handling
-      this.addToHistory('user', question);
-      this.addToHistory('assistant', answer);
+      this.addToHistoryForChat(chatId, 'user', question);
+      this.addToHistoryForChat(chatId, 'assistant', answer);
+      if (debug) {
+        this.appendDebugTrace(chatId, {
+          stage: 'final_answer_response',
+          answer: truncateForDebug(answer, 3000),
+          reasoning: truncateForDebug(reasoning, 3000),
+          providerDiagnostics
+        });
+      }
       
       const result = {
         answer,
         ...(reasoning && { reasoning, has_reasoning: true }),
         sources,
-        ...(rewrittenQueries && { rewritten_queries: rewrittenQueries })
+        ...(rewrittenQueries && { rewritten_queries: rewrittenQueries }),
+        ...(debug && { debug_trace: this.getDebugTrace(chatId) })
       };
       
       return result;

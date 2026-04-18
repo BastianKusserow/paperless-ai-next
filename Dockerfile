@@ -10,13 +10,18 @@ COPY --chown=node:node server.js main.py python_restart_manager.py start-service
 COPY docker-entrypoint.sh ./
 COPY --chown=node:node config ./config/
 COPY --chown=node:node models ./models/
+COPY --chown=node:node prompts ./prompts/
 COPY --chown=node:node routes ./routes/
 COPY --chown=node:node services ./services/
 COPY --chown=node:node views ./views/
 COPY --chown=node:node public ./public/
 COPY --chown=node:node OPENAPI ./OPENAPI/
 COPY --chown=node:node scripts ./scripts/
+COPY --chown=node:node tests ./tests/
 COPY --chown=node:node schemas.js swagger.js ecosystem.config.js package.json ./
+
+# Install additional dependencies (extends base image node_modules)
+RUN npm install liquidjs
 
 # Make startup script executable
 RUN chmod +x start-services.sh docker-entrypoint.sh

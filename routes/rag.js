@@ -2,6 +2,19 @@
 const express = require('express');
 const router = express.Router();
 const ragService = require('../services/ragService');
+const promptTemplateService = require('../services/promptTemplateService');
+
+function normalizeOptionalString(value) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function isIsoDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
 
 /**
  * @swagger
@@ -104,17 +117,38 @@ router.post('/search', async (req, res) => {
  */
 router.post('/ask', async (req, res) => {
   try {
-    const { question, from_date, to_date, correspondent } = req.body;
+    const {
+      question,
+      chatId,
+      debug = false,
+      from_date,
+      to_date,
+      correspondent
+    } = req.body;
     
-    if (!question) {
+    if (!normalizeOptionalString(question)) {
       return res.status(400).json({ error: 'Question is required' });
+    }
+
+    if (!normalizeOptionalString(chatId)) {
+      return res.status(400).json({ error: 'chatId is required' });
+    }
+
+    if (from_date && !isIsoDate(from_date)) {
+      return res.status(400).json({ error: 'from_date must be YYYY-MM-DD' });
+    }
+
+    if (to_date && !isIsoDate(to_date)) {
+      return res.status(400).json({ error: 'to_date must be YYYY-MM-DD' });
     }
     
     const result = await ragService.askQuestion(question, {
+      chatId: chatId.trim(),
+      debug: Boolean(debug),
       filters: {
-        from_date,
-        to_date,
-        correspondent
+        from_date: normalizeOptionalString(from_date),
+        to_date: normalizeOptionalString(to_date),
+        correspondent: normalizeOptionalString(correspondent)
       }
     });
     res.json(result);
@@ -314,6 +348,322 @@ router.post('/initialize', async (req, res) => {
 
 /**
  * @swagger
+ * /api/rag/prompts:
+ *   get:
+ *     summary: List all prompt templates
+ *     description: Returns registry of all available prompt templates with their status.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: List of prompt templates
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/prompts', async (req, res) => {
+  try {
+    const templates = promptTemplateService.listTemplates();
+    res.json({ templates });
+  } catch (error) {
+    console.error('Error in /api/rag/prompts:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/rag/prompts/:id:
+ *   get:
+ *     summary: Get a prompt template
+ *     description: Returns the content of a specific prompt template.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Template content
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/prompts/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    let content;
+    try {
+      content = promptTemplateService.getTemplateContent(id);
+    } catch (notFound) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+    res.json({ id, content });
+  } catch (error) {
+    console.error('Error in /api/rag/prompts/:id:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/rag/prompts/:id:
+ *   put:
+ *     summary: Save a prompt template override
+ *     description: Saves an override for a prompt template.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Template saved
+ *       400:
+ *         description: Invalid template content
+ *       500:
+ *         description: Internal server error
+ */
+router.put('/prompts/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body;
+
+    if (typeof content !== 'string') {
+      return res.status(400).json({ error: 'Content must be a string' });
+    }
+
+    const validation = promptTemplateService.validateTemplate(id, content);
+    if (!validation.valid) {
+      return res.status(400).json({ error: 'Invalid template syntax', details: validation.error });
+    }
+
+    promptTemplateService.saveOverride(id, content);
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('Error in PUT /api/rag/prompts/:id:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/rag/prompts/:id/reset:
+ *   post:
+ *     summary: Reset a prompt template to default
+ *     description: Removes the override and restores the default template.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Template reset
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/prompts/:id/reset', async (req, res) => {
+  try {
+    const { id } = req.params;
+    promptTemplateService.resetToDefault(id);
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('Error in POST /api/rag/prompts/:id/reset:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/rag/prompts/:id/preview:
+ *   get:
+ *     summary: Preview a prompt template
+ *     description: Renders a prompt template with sample context data.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: useLiveContext
+ *         schema:
+ *           type: boolean
+ *         description: If true, uses live RAG context instead of sample data
+ *     responses:
+ *       200:
+ *         description: Rendered template
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Internal server error
+ */
+router.get('/prompts/:id/preview', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { useLiveContext } = req.query;
+
+    let context;
+    if (useLiveContext === 'true') {
+      const chatId = normalizeOptionalString(req.query.chatId) || 'default';
+      context = promptTemplateService.buildRewriteContext(
+        'What invoices did I receive last month?',
+        ragService.getHistory(chatId).slice(-5),
+        {},
+        {},
+        'en'
+      );
+    } else {
+      context = promptTemplateService.getSampleContext(id);
+      if (!context) {
+        context = promptTemplateService.buildRewriteContext(
+          'Sample question',
+          [],
+          {},
+          {},
+          'en'
+        );
+      }
+    }
+
+    let rendered;
+    try {
+      rendered = promptTemplateService.render(id, context);
+    } catch (renderError) {
+      return res.status(500).json({ error: 'Template render failed', details: renderError.message });
+    }
+
+    res.json({ id, rendered });
+  } catch (error) {
+    console.error('Error in /api/rag/prompts/:id/preview:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/rag/prompts/:id/preview:
+ *   post:
+ *     summary: Preview a prompt template with custom content
+ *     description: Renders a prompt template with custom content and sample context data.
+ *     tags:
+ *       - RAG
+ *     security:
+ *       - BearerAuth: []
+ *       - ApiKeyAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: useLiveContext
+ *         schema:
+ *           type: boolean
+ *         description: If true, uses live RAG context instead of sample data
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               content:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Rendered template
+ *       404:
+ *         description: Template not found
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/prompts/:id/preview', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { content } = req.body || {};
+    const { useLiveContext } = req.query;
+
+    let context;
+    if (useLiveContext === 'true') {
+      const chatId = normalizeOptionalString(req.query.chatId) || 'default';
+      context = promptTemplateService.buildRewriteContext(
+        'What invoices did I receive last month?',
+        ragService.getHistory(chatId).slice(-5),
+        {},
+        {},
+        'en'
+      );
+    } else {
+      context = promptTemplateService.getSampleContext(id);
+      if (!context) {
+        context = promptTemplateService.buildRewriteContext(
+          'Sample question',
+          [],
+          {},
+          {},
+          'en'
+        );
+      }
+    }
+
+    let rendered;
+    try {
+      if (content) {
+        rendered = promptTemplateService.engine.parseAndRenderSync(content, { context });
+      } else {
+        rendered = promptTemplateService.render(id, context);
+      }
+    } catch (renderError) {
+      return res.status(500).json({ error: 'Template render failed', details: renderError.message });
+    }
+
+    res.json({ id, rendered });
+  } catch (error) {
+    console.error('Error in POST /api/rag/prompts/:id/preview:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+/**
+ * @swagger
  * /api/rag/test/query-rewrite:
  *   post:
  *     summary: Test query rewriting
@@ -370,9 +720,12 @@ router.post('/test/query-rewrite', async (req, res) => {
  */
 router.get('/test/history', async (req, res) => {
   try {
+    const chatId = normalizeOptionalString(req.query.chatId) || 'default';
     res.json({
-      history: ragService.conversationHistory,
-      max_messages: ragService.maxHistoryMessages
+      chatId,
+      history: ragService.getHistory(chatId),
+      max_turns: ragService.maxHistoryTurns,
+      debug_trace: ragService.getDebugTrace(chatId)
     });
   } catch (error) {
     console.error('Error in /api/rag/test/history:', error);
@@ -397,8 +750,9 @@ router.get('/test/history', async (req, res) => {
  */
 router.delete('/test/history', async (req, res) => {
   try {
-    ragService.clearHistory();
-    res.json({ success: true, message: 'Conversation history cleared' });
+    const chatId = normalizeOptionalString(req.query.chatId) || 'default';
+    ragService.clearHistoryForChat(chatId);
+    res.json({ success: true, chatId, message: 'Conversation history cleared' });
   } catch (error) {
     console.error('Error in /api/rag/test/history:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });

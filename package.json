@@ -12,6 +12,7 @@
     "test:area:observability": "node scripts/run-tests.js --area observability",
     "test:area:processing": "node scripts/run-tests.js --area processing",
     "test:area:prompts": "node scripts/run-tests.js --area prompts",
+    "test:area:rag": "node scripts/run-tests.js --area rag",
     "test:chat-document-search": "node scripts/run-tests.js --test chat-document-search",
     "test:chat-documents-service-search": "node scripts/run-tests.js --test chat-documents-service-search",
     "test:document-type-restriction": "node scripts/run-tests.js --test document-type-restriction",
@@ -24,6 +25,13 @@
     "test:ocr-startup-recovery": "node scripts/run-tests.js --test ocr-startup-recovery",
     "test:pr772-fix": "node scripts/run-tests.js --test pr772-fix",
     "test:rate-limiting": "node scripts/run-tests.js --test rate-limiting",
+    "test:rag-history-isolation": "node scripts/run-tests.js --test rag-history-isolation",
+    "test:rag-lightweight-answer-no-escalation": "node scripts/run-tests.js --test rag-lightweight-answer-no-escalation",
+    "test:rag-escalation-fetches-only-requested-docs": "node scripts/run-tests.js --test rag-escalation-fetches-only-requested-docs",
+    "test:rag-escalation-cap": "node scripts/run-tests.js --test rag-escalation-cap",
+    "test:rag-payment-heuristic-escalation": "node scripts/run-tests.js --test rag-payment-heuristic-escalation",
+    "test:rag-debug-trace-shape": "node scripts/run-tests.js --test rag-debug-trace-shape",
+    "test:rag-custom-provider-empty-response": "node scripts/run-tests.js --test rag-custom-provider-empty-response",
     "test:scan-stop-flow": "node scripts/run-tests.js --test scan-stop-flow",
     "test:setup-remote-guard": "node scripts/run-tests.js --test setup-remote-guard",
     "test:area:security": "node scripts/run-tests.js --area security",
@@ -93,7 +101,8 @@
     "swagger-ui-express": "^5.0.1",
     "sweetalert2": "^11.22.4",
     "tiktoken": "^1.0.20",
-    "tippy.js": "^6.3.7"
+    "tippy.js": "^6.3.7",
+    "liquidjs": "^10.17.0"
   },
   "devDependencies": {
     "@astrojs/starlight": "^0.38.2",
