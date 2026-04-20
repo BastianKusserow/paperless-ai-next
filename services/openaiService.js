@@ -439,6 +439,7 @@ class OpenAIService {
       }
 
       const model = process.env.OPENAI_MODEL || config.openai.model;
+      const maxCompletionTokens = Number(options.maxCompletionTokens) || Number(config.responseTokens) || 1000;
 
       const requestBody = {
         model: model,
@@ -448,7 +449,8 @@ class OpenAIService {
             content: prompt
           }
         ],
-        temperature: options.temperature ?? 0.7
+        temperature: options.temperature ?? 0.7,
+        max_tokens: maxCompletionTokens
       };
 
       if (options.responseFormat) {

@@ -724,7 +724,8 @@ class OllamaService {
         try {
             // Calculate context window size based on prompt length
             const promptTokenCount = this._calculatePromptTokenCount(prompt);
-            const numCtx = this._calculateNumCtx(promptTokenCount, Number(config.responseTokens));
+            const desiredResponseTokens = Number(options.maxCompletionTokens) || Number(config.responseTokens) || 1024;
+            const numCtx = this._calculateNumCtx(promptTokenCount, desiredResponseTokens);
 
             // Simple system prompt for text generation
             const systemPrompt = `You are a helpful assistant. Generate a clear, concise, and informative response to the user's question or request.`;
@@ -738,7 +739,7 @@ class OllamaService {
                 options: {
                     temperature: options.temperature ?? 0.7,
                     top_p: 0.9,
-                    num_predict: 1024,
+                    num_predict: desiredResponseTokens,
                     num_ctx: numCtx
                 }
             };

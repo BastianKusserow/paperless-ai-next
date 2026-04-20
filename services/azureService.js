@@ -391,6 +391,7 @@ class AzureOpenAIService {
       }
 
       const model = process.env.AZURE_DEPLOYMENT_NAME;
+      const maxCompletionTokens = Number(options.maxCompletionTokens) || Number(config.responseTokens) || 1000;
 
       const requestBody = {
         model: model,
@@ -401,7 +402,7 @@ class AzureOpenAIService {
           }
         ],
         temperature: options.temperature ?? 0.7,
-        max_tokens: 1000
+        max_tokens: maxCompletionTokens
       };
 
       if (options.responseFormat) {

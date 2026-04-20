@@ -106,6 +106,14 @@ function looksLikeGarbageAnswer(text) {
   return false;
 }
 
+function normalizeQuestionText(text) {
+  return String(text || '').trim().toLowerCase();
+}
+
+function hasAnyToken(text, patterns = []) {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
 class RagService {
   constructor() {
     this.baseUrl = process.env.RAG_SERVICE_URL || 'http://localhost:8000';
@@ -117,6 +125,8 @@ class RagService {
     this.maxHistoryTurns = 5;
     this.maxDebugTraceEntries = 12;
     this.maxEscalationDocuments = Number(process.env.RAG_MAX_ESCALATION_DOCS || 2);
+    this.maxRetrievalSources = Number(process.env.RAG_MAX_RETRIEVAL_SOURCES || 8);
+    this.maxSourcesPerQuery = Number(process.env.RAG_MAX_SOURCES_PER_QUERY || 5);
     this.documentContentCache = new Map();
   }
 
@@ -129,6 +139,7 @@ class RagService {
       this.chatState.set(chatId, {
         history: [],
         debugTrace: [],
+        activeResultSet: null,
         lastUpdatedAt: Date.now()
       });
     }
@@ -155,6 +166,16 @@ class RagService {
 
   getDebugTrace(chatId = 'default') {
     return this.ensureChatState(chatId).debugTrace;
+  }
+
+  getActiveResultSet(chatId = 'default') {
+    return this.ensureChatState(chatId).activeResultSet;
+  }
+
+  setActiveResultSet(chatId = 'default', activeResultSet = null) {
+    const state = this.ensureChatState(chatId);
+    state.activeResultSet = activeResultSet;
+    state.lastUpdatedAt = Date.now();
   }
 
   setDebugTrace(chatId = 'default', trace = []) {
@@ -210,6 +231,63 @@ class RagService {
 
   buildLightweightSources(sources = []) {
     return sources.map((source, index) => this.normalizeSource(source, index));
+  }
+
+  dedupeSources(sources = []) {
+    const seen = new Set();
+    const deduped = [];
+
+    for (const source of sources) {
+      const key = source.doc_id
+        ? `doc:${source.doc_id}`
+        : `meta:${source.title || ''}|${source.date || ''}|${source.correspondent || ''}`;
+
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      deduped.push(source);
+    }
+
+    return deduped;
+  }
+
+  async retrieveSourcesForQueries(client, queries = [], filters = {}) {
+    const normalizedQueries = Array.from(new Set(
+      (Array.isArray(queries) ? queries : [])
+        .map((query) => String(query || '').trim())
+        .filter(Boolean)
+    ));
+
+    const retrievalQueries = normalizedQueries.length > 0 ? normalizedQueries : [filters.originalQuestion || ''];
+    const allSources = [];
+    const perQueryStats = [];
+
+    for (const query of retrievalQueries) {
+      const response = await client.post(`${this.baseUrl}/context`, {
+        question: query,
+        max_sources: this.maxSourcesPerQuery,
+        from_date: filters.from_date,
+        to_date: filters.to_date,
+        correspondent: filters.correspondent
+      });
+
+      const querySources = this.buildLightweightSources(response.data.sources || []).map((source) => ({
+        ...source,
+        retrieved_query: query
+      }));
+
+      allSources.push(...querySources);
+      perQueryStats.push({ query, source_count: querySources.length });
+    }
+
+    const merged = this.dedupeSources(allSources).slice(0, this.maxRetrievalSources);
+    return {
+      retrievalQueries,
+      sources: merged,
+      perQueryStats
+    };
   }
 
   shouldForceEscalation(question, plannerResult = {}) {
@@ -490,7 +568,70 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
     const state = this.ensureChatState(chatId);
     state.history = [];
     state.debugTrace = [];
+    state.activeResultSet = null;
     state.lastUpdatedAt = Date.now();
+  }
+
+  classifyTurnIntent(question, chatId = 'default') {
+    const normalized = normalizeQuestionText(question);
+    const activeResultSet = this.getActiveResultSet(chatId);
+
+    if (!activeResultSet || !Array.isArray(activeResultSet.sources) || activeResultSet.sources.length === 0) {
+      return { intent: 'new_search', reason: 'No active result set available.' };
+    }
+
+    const explicitTopicShift = hasAnyToken(normalized, [
+      /\bunrelated\b/,
+      /\binstead\b/,
+      /\bforget that\b/,
+      /\bnew topic\b/,
+      /\banother question\b/,
+      /\bnow show me\b/,
+      /\bshow me\b.+\b(contract|letter|statement|insurance|bank|receipt|document type)\b/,
+      /\bjetzt\b.+\b(vertrag|brief|versicherung|kontoauszug)\b/
+    ]);
+
+    if (explicitTopicShift) {
+      return { intent: 'new_search', reason: 'Explicit topic shift detected.' };
+    }
+
+    const followUpReference = hasAnyToken(normalized, [
+      /\bthem\b/,
+      /\bthose\b/,
+      /\bthese\b/,
+      /\bwhich of them\b/,
+      /\bwhat do i still\b/,
+      /\bwhich amount\b/,
+      /\bhow much\b/,
+      /\bof those\b/,
+      /\bof these\b/,
+      /\bwelche davon\b/,
+      /\bdavon\b/,
+      /\bdiese\b/,
+      /\bderen\b/,
+      /\bwas muss ich noch zahlen\b/,
+      /\bwelchen betrag\b/
+    ]);
+
+    const retrievalLikeRequest = hasAnyToken(normalized, [
+      /\bshow me\b/,
+      /\bfind\b/,
+      /\blist\b/,
+      /\bsearch\b/,
+      /\bwhat .* do i have\b/,
+      /\bwhich .* do i have\b/,
+      /\bwelche .* habe ich\b/
+    ]);
+
+    const shortQuestion = normalized.split(/\s+/).filter(Boolean).length <= 10;
+    const activeTitles = activeResultSet.sources.map((source) => normalizeQuestionText(source.title)).filter(Boolean);
+    const referencesKnownDocs = activeTitles.some((title) => title && normalized.includes(title.slice(0, Math.min(title.length, 24))));
+
+    if (followUpReference || (shortQuestion && !retrievalLikeRequest) || referencesKnownDocs) {
+      return { intent: 'reuse_active_set', reason: 'Follow-up phrasing or active document reference detected.' };
+    }
+
+    return { intent: 'new_search', reason: 'Question appears to request a new retrieval set.' };
   }
 
   buildLightweightPlannerResult(rawText, fallbackAnswer = '') {
@@ -528,14 +669,33 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       languageHint
     );
     const prompt = promptTemplateService.render('rag.answer_plan', plannerContext);
+    fetch("http://host.docker.internal:4097/debug", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: "rag-planAnswerEvidence-start",
+        data: {
+          chatId,
+          question,
+          finalFilters,
+          sourceCount: Array.isArray(sources) ? sources.length : 0,
+          sourcePreview: Array.isArray(sources) ? sources.slice(0, 5).map((source) => ({
+            index: source.index,
+            title: source.title,
+            tags: source.tags,
+            snippet: String(source.snippet || '').slice(0, 300)
+          })) : [],
+          promptPreview: String(prompt || '').slice(0, 4000)
+        }
+      })
+    }).catch(() => {});
     let plannerPayload;
     try {
       plannerPayload = await aiService.generateText(prompt, {
         temperature: 0,
         responseFormat: { type: 'json_object' },
         returnMessageParts: true,
-        enableThinking: true,
-        maxCompletionTokens: Number(process.env.RAG_PLANNER_MAX_COMPLETION_TOKENS || 1200)
+        enableThinking: true
       });
     } catch (error) {
       plannerPayload = {
@@ -561,6 +721,20 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         confidence: 'low'
       };
     }
+
+    fetch("http://host.docker.internal:4097/debug", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        label: "rag-planAnswerEvidence-result",
+        data: {
+          chatId,
+          rawResponse: String(rawResponse || '').slice(0, 4000),
+          plannerResult,
+          providerDiagnostics: plannerPayload?.providerDiagnostics || null
+        }
+      })
+    }).catch(() => {});
 
     if (debug) {
       this.appendDebugTrace(chatId, {
@@ -642,18 +816,47 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       if (debug) {
         this.setDebugTrace(chatId, []);
       }
+
+      const turnIntent = this.classifyTurnIntent(question, chatId);
+      fetch("http://host.docker.internal:4097/debug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: "rag-askQuestion-turn-intent",
+          data: {
+            chatId,
+            question,
+            intent: turnIntent.intent,
+            reason: turnIntent.reason,
+            hasActiveResultSet: Boolean(this.getActiveResultSet(chatId))
+          }
+        })
+      }).catch(() => {});
+      if (debug) {
+        this.appendDebugTrace(chatId, {
+          stage: 'turn_intent',
+          intent: turnIntent.intent,
+          reason: turnIntent.reason
+        });
+      }
       
       // Step 0: Optional query rewriting (always run to detect metadata filters)
       let finalQuestion = question;
       let rewrittenQueries = null;
       let finalFilters = mergeFilters({}, explicitFilters);
+      let sources;
+      let retrievalQueries = [question];
+      const activeResultSet = this.getActiveResultSet(chatId);
       
-      if (enableRewrite) {
+      if (enableRewrite && turnIntent.intent !== 'reuse_active_set') {
         try {
           const rewriteResult = await this.rewriteQuery(question, explicitFilters, { chatId, debug });
           rewrittenQueries = rewriteResult.rewritten_queries;
           const extractedFilters = rewriteResult.filters || {};
           finalFilters = mergeFilters(extractedFilters, explicitFilters);
+          retrievalQueries = Array.isArray(rewrittenQueries) && rewrittenQueries.length > 0
+            ? rewrittenQueries
+            : [question];
           if (rewrittenQueries && rewrittenQueries[0] && rewrittenQueries[0] !== question) {
             finalQuestion = rewrittenQueries[0];
           }
@@ -661,23 +864,64 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
           console.error('[Query Rewrite] Failed, using original query:', rewriteError.message);
         }
       }
-      
-      // 1. Get context from the RAG service (with extracted filters)
-      const response = await client.post(`${this.baseUrl}/context`, { 
-        question: finalQuestion,
-        max_sources: 5,
-        from_date: finalFilters.from_date,
-        to_date: finalFilters.to_date,
-        correspondent: finalFilters.correspondent
-      });
-      
-      let sources = this.buildLightweightSources(response.data.sources || []);
+
+      if (turnIntent.intent === 'reuse_active_set' && activeResultSet) {
+        sources = Array.isArray(activeResultSet.sources) ? activeResultSet.sources : [];
+        finalFilters = mergeFilters(activeResultSet.filters || {}, explicitFilters);
+        retrievalQueries = Array.isArray(activeResultSet.retrievalQueries) && activeResultSet.retrievalQueries.length > 0
+          ? activeResultSet.retrievalQueries
+          : [activeResultSet.question || question];
+      } else {
+        const retrievalResult = await this.retrieveSourcesForQueries(client, retrievalQueries, {
+          from_date: finalFilters.from_date,
+          to_date: finalFilters.to_date,
+          correspondent: finalFilters.correspondent,
+          originalQuestion: question
+        });
+
+        sources = retrievalResult.sources;
+        retrievalQueries = retrievalResult.retrievalQueries;
+        this.setActiveResultSet(chatId, {
+          question: finalQuestion,
+          originalQuestion: question,
+          filters: finalFilters,
+          retrievalQueries,
+          sources,
+          perQueryStats: retrievalResult.perQueryStats,
+          createdAt: Date.now()
+        });
+      }
+
+      fetch("http://host.docker.internal:4097/debug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: "rag-askQuestion-sources-selected",
+          data: {
+            chatId,
+            sourceOrigin: turnIntent.intent === 'reuse_active_set' ? 'active_result_set' : 'fresh_retrieval',
+            finalQuestion,
+            retrievalQueries,
+            finalFilters,
+            sourceCount: Array.isArray(sources) ? sources.length : 0,
+            sources: Array.isArray(sources) ? sources.slice(0, 5).map((source) => ({
+              index: source.index,
+              title: source.title,
+              tags: source.tags,
+              snippet: String(source.snippet || '').slice(0, 250)
+            })) : []
+          }
+        })
+      }).catch(() => {});
+
       if (debug) {
         this.appendDebugTrace(chatId, {
           stage: 'retrieval',
           query: finalQuestion,
+          retrieval_queries: retrievalQueries,
           filters: finalFilters,
-          sources
+          sources,
+          source_origin: turnIntent.intent === 'reuse_active_set' ? 'active_result_set' : 'fresh_retrieval'
         });
       }
 
@@ -719,6 +963,23 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         });
       }
 
+      fetch("http://host.docker.internal:4097/debug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: "rag-askQuestion-escalation-decision",
+          data: {
+            chatId,
+            heuristicIndexes,
+            requestedIndexes,
+            shouldEscalate,
+            plannerNeedsDeeperEvidence: plannerResult.needs_deeper_evidence,
+            plannerReason: plannerResult.reason,
+            mixedPaymentSignals: this.hasMixedPaymentSignals(sources)
+          }
+        })
+      }).catch(() => {});
+
       const aiService = AIServiceFactory.getService();
       const history = this.getHistory(chatId);
       const languageHint = detectLanguageHint(question);
@@ -754,14 +1015,27 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         });
       }
 
+      fetch("http://host.docker.internal:4097/debug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: "rag-askQuestion-final-prompt",
+          data: {
+            chatId,
+            mode: shouldEscalate && selectedDocuments.length > 0 ? 'deep' : 'lightweight',
+            selectedDocumentCount: selectedDocuments.length,
+            promptPreview: String(prompt || '').slice(0, 4000)
+          }
+        })
+      }).catch(() => {});
+
       let answer;
       let reasoning = '';
       try {
         const answerResult = await aiService.generateText(prompt, {
           temperature: 0.2,
           enableThinking: true,
-          returnMessageParts: true,
-          maxCompletionTokens: Number(process.env.RAG_ANSWER_MAX_COMPLETION_TOKENS || 2000)
+          returnMessageParts: true
         });
         if (typeof answerResult === 'string') {
           answer = answerResult;
@@ -779,6 +1053,21 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       if ((!answer || looksLikeGarbageAnswer(answer)) && plannerResult.answer && !looksLikeGarbageAnswer(plannerResult.answer) && !shouldEscalate) {
         answer = plannerResult.answer;
       }
+
+      fetch("http://host.docker.internal:4097/debug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: "rag-askQuestion-final-response",
+          data: {
+            chatId,
+            answer: String(answer || '').slice(0, 3000),
+            reasoning: String(reasoning || '').slice(0, 3000),
+            providerDiagnostics,
+            usedPlannerFallback: (!answer || looksLikeGarbageAnswer(answer)) && !shouldEscalate
+          }
+        })
+      }).catch(() => {});
       
       // Add to conversation history for follow-up handling
       this.addToHistoryForChat(chatId, 'user', question);
@@ -802,6 +1091,19 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       
       return result;
     } catch (error) {
+      fetch("http://host.docker.internal:4097/debug", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: "rag-askQuestion-error",
+          data: {
+            chatId,
+            question,
+            error: error.message,
+            stack: error.stack
+          }
+        })
+      }).catch(() => {});
       console.error('Error in askQuestion:', error);
       throw new Error("An error occurred while processing your question. Please try again later.");
     }

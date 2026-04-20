@@ -8,6 +8,7 @@ async function run() {
   const originalGetClient = ragService._getClient;
   const originalGetDocumentContent = paperlessService.getDocumentContent;
   const fetchedDocIds = [];
+  let contextCalls = 0;
 
   try {
     ragService.chatState.clear();
@@ -18,16 +19,19 @@ async function run() {
     };
 
     ragService._getClient = async () => ({
-      post: async () => ({
-        data: {
-          context: 'context',
-          sources: [
-            { doc_id: 1, title: 'Doc 1', correspondent: 'A', date: '2026-01-01', snippet: 'A', tags: 'one' },
-            { doc_id: 2, title: 'Doc 2', correspondent: 'B', date: '2026-01-02', snippet: 'B', tags: 'two' },
-            { doc_id: 3, title: 'Doc 3', correspondent: 'C', date: '2026-01-03', snippet: 'C', tags: 'three' }
-          ]
-        }
-      })
+      post: async () => {
+        contextCalls += 1;
+        return {
+          data: {
+            context: 'context',
+            sources: [
+              { doc_id: 1, title: 'Doc 1', correspondent: 'A', date: '2026-01-01', snippet: 'A', tags: 'one' },
+              { doc_id: 2, title: 'Doc 2', correspondent: 'B', date: '2026-01-02', snippet: 'B', tags: 'two' },
+              { doc_id: 3, title: 'Doc 3', correspondent: 'C', date: '2026-01-03', snippet: 'C', tags: 'three' }
+            ]
+          }
+        };
+      }
     });
 
     AIServiceFactory.getService = () => ({
@@ -60,6 +64,7 @@ async function run() {
       debug: true
     });
 
+    assert.strictEqual(contextCalls, 1, 'Single rewritten query should issue one context request');
     assert.strictEqual(result.answer, 'Final answer from full document [2]');
     assert.deepStrictEqual(fetchedDocIds, [2], 'Should fetch only the requested document');
     const escalationEntry = result.debug_trace.find((entry) => entry.stage === 'escalation');
