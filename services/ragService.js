@@ -215,6 +215,27 @@ class RagService {
     return turns.slice(-this.maxHistoryTurns).flatMap((turn) => [turn.user, turn.assistant].filter(Boolean));
   }
 
+  buildProviderMessages(chatId = 'default', prompt = '') {
+    const history = this.getHistory(chatId)
+      .filter((message) =>
+        (message.role === 'user' || message.role === 'assistant')
+        && typeof message.content === 'string'
+        && message.content.trim().length > 0
+      )
+      .slice(-this.maxHistoryTurns * 2)
+      .map((message) => ({
+        role: message.role,
+        content: message.content
+      }));
+
+    history.push({
+      role: 'user',
+      content: String(prompt || '')
+    });
+
+    return history;
+  }
+
   normalizeSource(source = {}, index) {
     return {
       index: index + 1,
@@ -454,7 +475,8 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
 
       const rewrittenResponse = await aiService.generateText(prompt, {
         temperature: 0,
-        responseFormat: { type: 'json_object' }
+        responseFormat: { type: 'json_object' },
+        messages: this.buildProviderMessages(chatId, prompt)
       });
       if (debug) {
         this.appendDebugTrace(chatId, {
@@ -695,7 +717,8 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         temperature: 0,
         responseFormat: { type: 'json_object' },
         returnMessageParts: true,
-        enableThinking: true
+        enableThinking: true,
+        messages: this.buildProviderMessages(chatId, prompt)
       });
     } catch (error) {
       plannerPayload = {
@@ -1035,7 +1058,8 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         const answerResult = await aiService.generateText(prompt, {
           temperature: 0.2,
           enableThinking: true,
-          returnMessageParts: true
+          returnMessageParts: true,
+          messages: this.buildProviderMessages(chatId, prompt)
         });
         if (typeof answerResult === 'string') {
           answer = answerResult;

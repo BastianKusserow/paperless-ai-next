@@ -9,9 +9,12 @@ async function run() {
     ragService.chatState.clear();
 
     AIServiceFactory.getService = () => ({
-      generateText: async (prompt) => {
+      generateText: async (prompt, options = {}) => {
+        const textToInspect = Array.isArray(options.messages)
+          ? options.messages.map((message) => message.content).join('\n')
+          : prompt;
         return JSON.stringify({
-          queries: [prompt.includes('invoice-a') ? 'from-a' : 'from-b'],
+          queries: [textToInspect.includes('invoice-a') ? 'from-a' : 'from-b'],
           filters: {}
         });
       }

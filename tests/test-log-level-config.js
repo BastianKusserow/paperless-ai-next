@@ -1,10 +1,18 @@
 const assert = require('assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 const configModulePath = require.resolve('../config/config');
 const originalLogLevel = process.env.LOG_LEVEL;
+const originalConfigSourceMode = process.env.CONFIG_SOURCE_MODE;
+const originalCwd = process.cwd();
+const tempCwd = fs.mkdtempSync(path.join(os.tmpdir(), 'paperless-ai-log-level-'));
+fs.mkdirSync(path.join(tempCwd, 'data'), { recursive: true });
 
 function loadConfigWithLogLevel(logLevel) {
   delete require.cache[configModulePath];
+  process.chdir(tempCwd);
 
   if (typeof logLevel === 'undefined') {
     delete process.env.LOG_LEVEL;
@@ -16,16 +24,26 @@ function loadConfigWithLogLevel(logLevel) {
 }
 
 function restoreEnvironment() {
+  process.chdir(originalCwd);
+
   if (typeof originalLogLevel === 'undefined') {
     delete process.env.LOG_LEVEL;
   } else {
     process.env.LOG_LEVEL = originalLogLevel;
   }
 
+  if (typeof originalConfigSourceMode === 'undefined') {
+    delete process.env.CONFIG_SOURCE_MODE;
+  } else {
+    process.env.CONFIG_SOURCE_MODE = originalConfigSourceMode;
+  }
+
   delete require.cache[configModulePath];
 }
 
 try {
+  process.env.CONFIG_SOURCE_MODE = 'runtime-first';
+
   let config = loadConfigWithLogLevel('DEBUG');
   assert.strictEqual(config.logLevel, 'debug', 'Expected DEBUG to normalize to debug');
   assert.strictEqual(process.env.LOG_LEVEL, 'debug', 'Expected process.env.LOG_LEVEL to be normalized to debug');

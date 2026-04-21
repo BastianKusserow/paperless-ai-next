@@ -722,8 +722,21 @@ class OllamaService {
      */
     async generateText(prompt, options = {}) {
         try {
+            const providedMessages = Array.isArray(options.messages)
+                ? options.messages
+                    .filter((message) => message && (message.role === 'system' || message.role === 'user' || message.role === 'assistant'))
+                    .map((message) => ({
+                        role: message.role,
+                        content: typeof message.content === 'string' ? message.content : String(message.content || '')
+                    }))
+                    .filter((message) => message.content.trim().length > 0)
+                : [];
+            const promptText = providedMessages.length > 0
+                ? providedMessages.map((message) => `${message.role}: ${message.content}`).join('\n')
+                : String(prompt || '');
+
             // Calculate context window size based on prompt length
-            const promptTokenCount = this._calculatePromptTokenCount(prompt);
+            const promptTokenCount = this._calculatePromptTokenCount(promptText);
             const desiredResponseTokens = Number(options.maxCompletionTokens) || Number(config.responseTokens) || 1024;
             const numCtx = this._calculateNumCtx(promptTokenCount, desiredResponseTokens);
 
@@ -733,7 +746,7 @@ class OllamaService {
             // Call Ollama API without enforcing a specific response format
             const generateTextBody = {
                 model: this.model,
-                prompt: prompt,
+                prompt: promptText,
                 system: systemPrompt,
                 stream: false,
                 options: {

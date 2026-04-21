@@ -440,15 +440,26 @@ class OpenAIService {
 
       const model = process.env.OPENAI_MODEL || config.openai.model;
       const maxCompletionTokens = Number(options.maxCompletionTokens) || Number(config.responseTokens) || 1000;
+      const providedMessages = Array.isArray(options.messages)
+        ? options.messages
+            .filter((message) => message && (message.role === 'system' || message.role === 'user' || message.role === 'assistant'))
+            .map((message) => ({
+              role: message.role,
+              content: typeof message.content === 'string' ? message.content : String(message.content || '')
+            }))
+            .filter((message) => message.content.trim().length > 0)
+        : [];
 
       const requestBody = {
         model: model,
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
+        messages: providedMessages.length > 0
+          ? providedMessages
+          : [
+              {
+                role: 'user',
+                content: String(prompt || '')
+              }
+            ],
         temperature: options.temperature ?? 0.7,
         max_tokens: maxCompletionTokens
       };
