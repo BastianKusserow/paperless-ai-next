@@ -5,9 +5,11 @@ const ragService = require('../services/ragService');
 async function run() {
   const originalGetService = AIServiceFactory.getService;
   const originalGetClient = ragService._getClient;
+  const originalTurnIntentV2Enabled = ragService.turnIntentV2Enabled;
 
   try {
     ragService.chatState.clear();
+    ragService.turnIntentV2Enabled = true;
     ragService._getClient = async () => ({
       post: async () => ({
         data: {
@@ -43,16 +45,24 @@ async function run() {
 
     assert.ok(stages.includes('rewrite'));
     assert.ok(stages.includes('rewrite_result'));
+    assert.ok(stages.includes('turn_intent'));
     assert.ok(stages.includes('retrieval'));
     assert.ok(stages.includes('answer_planner'));
     assert.ok(stages.includes('escalation'));
     assert.ok(stages.includes('final_answer_prompt'));
     assert.ok(stages.includes('final_answer_response'));
 
+    const turnIntentEntry = result.debug_trace.find((entry) => entry.stage === 'turn_intent');
+    assert.ok(turnIntentEntry);
+    assert.strictEqual(typeof turnIntentEntry.confidence, 'number');
+    assert.ok(turnIntentEntry.features && typeof turnIntentEntry.features === 'object');
+    assert.ok(turnIntentEntry.thresholds && typeof turnIntentEntry.thresholds === 'object');
+
     console.log('✅ test-rag-debug-trace-shape passed');
   } finally {
     AIServiceFactory.getService = originalGetService;
     ragService._getClient = originalGetClient;
+    ragService.turnIntentV2Enabled = originalTurnIntentV2Enabled;
     ragService.chatState.clear();
   }
 }

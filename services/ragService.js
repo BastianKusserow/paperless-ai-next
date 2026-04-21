@@ -114,6 +114,32 @@ function hasAnyToken(text, patterns = []) {
   return patterns.some((pattern) => pattern.test(text));
 }
 
+function tokenizeForIntent(text = '') {
+  return String(text || '')
+    .toLowerCase()
+    .split(/[^a-z0-9äöüß]+/i)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3);
+}
+
+function jaccardSimilarity(a = '', b = '') {
+  const aTokens = new Set(tokenizeForIntent(a));
+  const bTokens = new Set(tokenizeForIntent(b));
+  if (aTokens.size === 0 || bTokens.size === 0) {
+    return 0;
+  }
+
+  let intersection = 0;
+  for (const token of aTokens) {
+    if (bTokens.has(token)) {
+      intersection += 1;
+    }
+  }
+
+  const union = new Set([...aTokens, ...bTokens]).size;
+  return union > 0 ? intersection / union : 0;
+}
+
 class RagService {
   constructor() {
     this.baseUrl = process.env.RAG_SERVICE_URL || 'http://localhost:8000';
@@ -128,6 +154,9 @@ class RagService {
     this.maxRetrievalSources = Number(process.env.RAG_MAX_RETRIEVAL_SOURCES || 8);
     this.maxSourcesPerQuery = Number(process.env.RAG_MAX_SOURCES_PER_QUERY || 5);
     this.documentContentCache = new Map();
+    this.turnIntentV2Enabled = String(process.env.RAG_TURN_INTENT_V2 || 'false').trim().toLowerCase() === 'true';
+    this.turnIntentThresholdLow = Number(process.env.RAG_TURN_INTENT_LOW_THRESHOLD || 0.45);
+    this.turnIntentThresholdHigh = Number(process.env.RAG_TURN_INTENT_HIGH_THRESHOLD || 0.65);
   }
 
   async _getClient() {
@@ -309,6 +338,32 @@ class RagService {
       sources: merged,
       perQueryStats
     };
+  }
+
+  mergeSourcesByPriority(primarySources = [], secondarySources = []) {
+    const merged = [];
+    const seen = new Set();
+
+    const appendUnique = (sources = [], sourceOrigin = 'unknown') => {
+      for (const source of sources) {
+        const key = source.doc_id
+          ? `doc:${source.doc_id}`
+          : `meta:${source.title || ''}|${source.date || ''}|${source.correspondent || ''}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        merged.push({
+          ...source,
+          source_origin: sourceOrigin
+        });
+      }
+    };
+
+    appendUnique(primarySources, 'active_result_set');
+    appendUnique(secondarySources, 'fresh_retrieval');
+
+    return merged.slice(0, this.maxRetrievalSources);
   }
 
   shouldForceEscalation(question, plannerResult = {}) {
@@ -594,30 +649,76 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
     state.lastUpdatedAt = Date.now();
   }
 
-  classifyTurnIntent(question, chatId = 'default') {
+  getActiveTopicText(activeResultSet = null) {
+    const sources = Array.isArray(activeResultSet?.sources) ? activeResultSet.sources : [];
+    return sources
+      .slice(0, 6)
+      .map((source) => [source.title, source.correspondent, source.tags, source.snippet].filter(Boolean).join(' '))
+      .join(' ');
+  }
+
+  extractConstraintTokens(question, activeResultSet = null) {
     const normalized = normalizeQuestionText(question);
-    const activeResultSet = this.getActiveResultSet(chatId);
+    const tokens = new Set();
 
-    if (!activeResultSet || !Array.isArray(activeResultSet.sources) || activeResultSet.sources.length === 0) {
-      return { intent: 'new_search', reason: 'No active result set available.' };
+    if (/\b(last month|last week|today|this year|gestern|letzte woche|letzten monat|dieses jahr|\d{4})\b/i.test(normalized)) {
+      tokens.add('date');
+    }
+    if (/\b(contract|invoice|receipt|statement|versicherung|vertrag|rechnung|beleg|kontoauszug)\b/i.test(normalized)) {
+      tokens.add('document_type');
+    }
+    if (/\b(paid|unpaid|overdue|open|offen|bezahlt|fällig|remaining|sum|total|noch zahlen)\b/i.test(normalized)) {
+      tokens.add('payment_status');
     }
 
-    const explicitTopicShift = hasAnyToken(normalized, [
-      /\bunrelated\b/,
-      /\binstead\b/,
-      /\bforget that\b/,
-      /\bnew topic\b/,
-      /\banother question\b/,
-      /\bnow show me\b/,
-      /\bshow me\b.+\b(contract|letter|statement|insurance|bank|receipt|document type)\b/,
-      /\bjetzt\b.+\b(vertrag|brief|versicherung|kontoauszug)\b/
-    ]);
-
-    if (explicitTopicShift) {
-      return { intent: 'new_search', reason: 'Explicit topic shift detected.' };
+    const activeSources = Array.isArray(activeResultSet?.sources) ? activeResultSet.sources : [];
+    for (const source of activeSources) {
+      const correspondent = normalizeQuestionText(source.correspondent || '');
+      if (correspondent && normalized.includes(correspondent)) {
+        tokens.add(`corr:${correspondent}`);
+      }
+      const tags = tokenizeForIntent(source.tags || '');
+      for (const tag of tags.slice(0, 5)) {
+        if (normalized.includes(tag)) {
+          tokens.add(`tag:${tag}`);
+        }
+      }
     }
 
-    const followUpReference = hasAnyToken(normalized, [
+    return tokens;
+  }
+
+  estimateAnswerability(question, activeResultSet = null) {
+    const normalized = normalizeQuestionText(question);
+    const sources = Array.isArray(activeResultSet?.sources) ? activeResultSet.sources : [];
+    if (sources.length === 0) {
+      return 0;
+    }
+
+    if (/\b(how many|count|list|which|welche)\b/i.test(normalized)) {
+      return 0.8;
+    }
+
+    if (/\b(total|sum|remaining|still have to pay|noch zahlen|gesamt|betrag)\b/i.test(normalized)) {
+      const hasInvoiceLike = sources.some((source) => /invoice|rechnung/i.test(`${source.title} ${source.tags}`));
+      return hasInvoiceLike ? 0.7 : 0.35;
+    }
+
+    if (/\b(exact|quote|clause|compare|vergleich|klausel)\b/i.test(normalized)) {
+      const longSnippets = sources.filter((source) => String(source.snippet || '').length >= 140).length;
+      return longSnippets > 0 ? 0.45 : 0.2;
+    }
+
+    return 0.6;
+  }
+
+  extractTurnFeatures(question, chatId = 'default', activeResultSet = null) {
+    const history = this.getHistory(chatId);
+    const lastUserMessage = [...history].reverse().find((entry) => entry.role === 'user');
+    const normalizedQuestion = normalizeQuestionText(question);
+    const activeTopicText = this.getActiveTopicText(activeResultSet);
+
+    const followUpReference = hasAnyToken(normalizedQuestion, [
       /\bthem\b/,
       /\bthose\b/,
       /\bthese\b/,
@@ -635,7 +736,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       /\bwelchen betrag\b/
     ]);
 
-    const retrievalLikeRequest = hasAnyToken(normalized, [
+    const retrievalLikeRequest = hasAnyToken(normalizedQuestion, [
       /\bshow me\b/,
       /\bfind\b/,
       /\blist\b/,
@@ -645,15 +746,208 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       /\bwelche .* habe ich\b/
     ]);
 
-    const shortQuestion = normalized.split(/\s+/).filter(Boolean).length <= 10;
-    const activeTitles = activeResultSet.sources.map((source) => normalizeQuestionText(source.title)).filter(Boolean);
-    const referencesKnownDocs = activeTitles.some((title) => title && normalized.includes(title.slice(0, Math.min(title.length, 24))));
+    const explicitTopicShift = hasAnyToken(normalizedQuestion, [
+      /\bunrelated\b/,
+      /\binstead\b/,
+      /\bforget that\b/,
+      /\bnew topic\b/,
+      /\banother question\b/,
+      /\bnow show me\b/,
+      /\bshow me\b.+\b(contract|letter|statement|insurance|bank|receipt|document type)\b/,
+      /\bjetzt\b.+\b(vertrag|brief|versicherung|kontoauszug)\b/
+    ]);
 
-    if (followUpReference || (shortQuestion && !retrievalLikeRequest) || referencesKnownDocs) {
-      return { intent: 'reuse_active_set', reason: 'Follow-up phrasing or active document reference detected.' };
+    const semanticToLastUser = jaccardSimilarity(normalizedQuestion, normalizeQuestionText(lastUserMessage?.content || ''));
+    const semanticToActiveTopic = jaccardSimilarity(normalizedQuestion, activeTopicText);
+    const semanticContinuity = Math.max(semanticToLastUser, semanticToActiveTopic);
+
+    const questionConstraintTokens = this.extractConstraintTokens(question, activeResultSet);
+    const activeConstraintTokens = this.extractConstraintTokens(activeTopicText, activeResultSet);
+
+    let constraintOverlap = 0.6;
+    if (questionConstraintTokens.size > 0) {
+      let overlapCount = 0;
+      for (const token of questionConstraintTokens) {
+        if (activeConstraintTokens.has(token)) {
+          overlapCount += 1;
+        }
+      }
+      constraintOverlap = overlapCount / questionConstraintTokens.size;
     }
 
-    return { intent: 'new_search', reason: 'Question appears to request a new retrieval set.' };
+    const noveltyPenalty = questionConstraintTokens.size > 0 ? Math.max(0, 1 - constraintOverlap) : 0;
+    const answerability = this.estimateAnswerability(question, activeResultSet);
+    const shortQuestion = normalizedQuestion.split(/\s+/).filter(Boolean).length <= 10;
+    const followupLinguistic = followUpReference || (shortQuestion && !retrievalLikeRequest) ? 1 : 0;
+
+    return {
+      explicitTopicShift,
+      semanticToLastUser,
+      semanticToActiveTopic,
+      semanticContinuity,
+      constraintOverlap,
+      noveltyPenalty,
+      answerability,
+      followupLinguistic,
+      questionConstraintTokens: Array.from(questionConstraintTokens),
+      activeConstraintTokens: Array.from(activeConstraintTokens)
+    };
+  }
+
+  scoreTurnStrategy(features = {}) {
+    const weights = {
+      semantic: 0.35,
+      constraints: 0.30,
+      answerability: 0.25,
+      followup: 0.10,
+      noveltyPenalty: 0.40
+    };
+    const reuseScore =
+      (weights.semantic * (features.semanticContinuity || 0)) +
+      (weights.constraints * (features.constraintOverlap || 0)) +
+      (weights.answerability * (features.answerability || 0)) +
+      (weights.followup * (features.followupLinguistic || 0)) -
+      (weights.noveltyPenalty * (features.noveltyPenalty || 0));
+
+    const boundedReuseScore = Math.max(0, Math.min(1, reuseScore));
+    if (features.explicitTopicShift) {
+      return {
+        intent: 'new_search',
+        confidence: 0.95,
+        reuseScore: boundedReuseScore,
+        weights,
+        reason: 'Explicit topic shift detected.'
+      };
+    }
+
+    if ((features.followupLinguistic || 0) >= 1 && (features.noveltyPenalty || 0) <= 0.35 && (features.answerability || 0) >= 0.6) {
+      return {
+        intent: 'reuse_active_set',
+        confidence: Math.max(0.7, boundedReuseScore),
+        reuseScore: boundedReuseScore,
+        weights,
+        reason: 'Follow-up language with low novelty and sufficient answerability favors reuse.'
+      };
+    }
+
+    if (boundedReuseScore >= this.turnIntentThresholdHigh) {
+      return {
+        intent: 'reuse_active_set',
+        confidence: boundedReuseScore,
+        reuseScore: boundedReuseScore,
+        weights,
+        reason: 'High continuity and answerability suggest reusing active result set.'
+      };
+    }
+
+    if (boundedReuseScore >= this.turnIntentThresholdLow) {
+      return {
+        intent: 'reuse_plus_refresh',
+        confidence: boundedReuseScore,
+        reuseScore: boundedReuseScore,
+        weights,
+        reason: 'Ambiguous continuity; blend active set with fresh retrieval.'
+      };
+    }
+
+    return {
+      intent: 'new_search',
+      confidence: 1 - boundedReuseScore,
+      reuseScore: boundedReuseScore,
+      weights,
+      reason: 'Low continuity or high novelty suggests a new retrieval set.'
+    };
+  }
+
+  classifyTurnIntent(question, chatId = 'default') {
+    const normalized = normalizeQuestionText(question);
+    const activeResultSet = this.getActiveResultSet(chatId);
+
+    if (!activeResultSet || !Array.isArray(activeResultSet.sources) || activeResultSet.sources.length === 0) {
+      return {
+        intent: 'new_search',
+        reason: 'No active result set available.',
+        confidence: 0.95,
+        reuse_score: 0,
+        thresholds: {
+          low: this.turnIntentThresholdLow,
+          high: this.turnIntentThresholdHigh
+        },
+        features: {
+          active_result_set_present: false
+        }
+      };
+    }
+
+    if (!this.turnIntentV2Enabled) {
+      const explicitTopicShift = hasAnyToken(normalized, [
+        /\bunrelated\b/,
+        /\binstead\b/,
+        /\bforget that\b/,
+        /\bnew topic\b/,
+        /\banother question\b/,
+        /\bnow show me\b/,
+        /\bshow me\b.+\b(contract|letter|statement|insurance|bank|receipt|document type)\b/,
+        /\bjetzt\b.+\b(vertrag|brief|versicherung|kontoauszug)\b/
+      ]);
+
+      if (explicitTopicShift) {
+        return { intent: 'new_search', reason: 'Explicit topic shift detected.', confidence: 0.95 };
+      }
+
+      const followUpReference = hasAnyToken(normalized, [
+        /\bthem\b/,
+        /\bthose\b/,
+        /\bthese\b/,
+        /\bwhich of them\b/,
+        /\bwhat do i still\b/,
+        /\bwhich amount\b/,
+        /\bhow much\b/,
+        /\bof those\b/,
+        /\bof these\b/,
+        /\bwelche davon\b/,
+        /\bdavon\b/,
+        /\bdiese\b/,
+        /\bderen\b/,
+        /\bwas muss ich noch zahlen\b/,
+        /\bwelchen betrag\b/
+      ]);
+
+      const retrievalLikeRequest = hasAnyToken(normalized, [
+        /\bshow me\b/,
+        /\bfind\b/,
+        /\blist\b/,
+        /\bsearch\b/,
+        /\bwhat .* do i have\b/,
+        /\bwhich .* do i have\b/,
+        /\bwelche .* habe ich\b/
+      ]);
+
+      const shortQuestion = normalized.split(/\s+/).filter(Boolean).length <= 10;
+      const activeTitles = activeResultSet.sources.map((source) => normalizeQuestionText(source.title)).filter(Boolean);
+      const referencesKnownDocs = activeTitles.some((title) => title && normalized.includes(title.slice(0, Math.min(title.length, 24))));
+
+      if (followUpReference || (shortQuestion && !retrievalLikeRequest) || referencesKnownDocs) {
+        return { intent: 'reuse_active_set', reason: 'Follow-up phrasing or active document reference detected.', confidence: 0.75 };
+      }
+
+      return { intent: 'new_search', reason: 'Question appears to request a new retrieval set.', confidence: 0.65 };
+    }
+
+    const features = this.extractTurnFeatures(question, chatId, activeResultSet);
+    const scored = this.scoreTurnStrategy(features);
+    return {
+      intent: scored.intent,
+      reason: scored.reason,
+      confidence: scored.confidence,
+      reuse_score: scored.reuseScore,
+      thresholds: {
+        low: this.turnIntentThresholdLow,
+        high: this.turnIntentThresholdHigh
+      },
+      weights: scored.weights,
+      features
+    };
   }
 
   buildLightweightPlannerResult(rawText, fallbackAnswer = '') {
@@ -859,7 +1153,12 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         this.appendDebugTrace(chatId, {
           stage: 'turn_intent',
           intent: turnIntent.intent,
-          reason: turnIntent.reason
+          reason: turnIntent.reason,
+          confidence: turnIntent.confidence,
+          reuse_score: turnIntent.reuse_score,
+          thresholds: turnIntent.thresholds,
+          features: turnIntent.features,
+          weights: turnIntent.weights
         });
       }
       
@@ -871,7 +1170,10 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       let retrievalQueries = [question];
       const activeResultSet = this.getActiveResultSet(chatId);
       
-      if (enableRewrite && turnIntent.intent !== 'reuse_active_set') {
+      const shouldReuse = turnIntent.intent === 'reuse_active_set';
+      const shouldHybridReuse = turnIntent.intent === 'reuse_plus_refresh';
+
+      if (enableRewrite && !shouldReuse) {
         try {
           const rewriteResult = await this.rewriteQuery(question, explicitFilters, { chatId, debug });
           rewrittenQueries = rewriteResult.rewritten_queries;
@@ -888,12 +1190,33 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         }
       }
 
-      if (turnIntent.intent === 'reuse_active_set' && activeResultSet) {
+      if (shouldReuse && activeResultSet) {
         sources = Array.isArray(activeResultSet.sources) ? activeResultSet.sources : [];
         finalFilters = mergeFilters(activeResultSet.filters || {}, explicitFilters);
         retrievalQueries = Array.isArray(activeResultSet.retrievalQueries) && activeResultSet.retrievalQueries.length > 0
           ? activeResultSet.retrievalQueries
           : [activeResultSet.question || question];
+      } else if (shouldHybridReuse && activeResultSet) {
+        const retrievalResult = await this.retrieveSourcesForQueries(client, retrievalQueries, {
+          from_date: finalFilters.from_date,
+          to_date: finalFilters.to_date,
+          correspondent: finalFilters.correspondent,
+          originalQuestion: question
+        });
+
+        const activeSources = Array.isArray(activeResultSet.sources) ? activeResultSet.sources : [];
+        sources = this.mergeSourcesByPriority(activeSources, retrievalResult.sources);
+        retrievalQueries = retrievalResult.retrievalQueries;
+        finalFilters = mergeFilters(activeResultSet.filters || {}, finalFilters);
+        this.setActiveResultSet(chatId, {
+          question: finalQuestion,
+          originalQuestion: question,
+          filters: finalFilters,
+          retrievalQueries,
+          sources,
+          perQueryStats: retrievalResult.perQueryStats,
+          createdAt: Date.now()
+        });
       } else {
         const retrievalResult = await this.retrieveSourcesForQueries(client, retrievalQueries, {
           from_date: finalFilters.from_date,
@@ -922,7 +1245,9 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
           label: "rag-askQuestion-sources-selected",
           data: {
             chatId,
-            sourceOrigin: turnIntent.intent === 'reuse_active_set' ? 'active_result_set' : 'fresh_retrieval',
+            sourceOrigin: shouldReuse
+              ? 'active_result_set'
+              : (shouldHybridReuse ? 'hybrid_reuse_plus_refresh' : 'fresh_retrieval'),
             finalQuestion,
             retrievalQueries,
             finalFilters,
@@ -944,7 +1269,9 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
           retrieval_queries: retrievalQueries,
           filters: finalFilters,
           sources,
-          source_origin: turnIntent.intent === 'reuse_active_set' ? 'active_result_set' : 'fresh_retrieval'
+          source_origin: shouldReuse
+            ? 'active_result_set'
+            : (shouldHybridReuse ? 'hybrid_reuse_plus_refresh' : 'fresh_retrieval')
         });
       }
 
