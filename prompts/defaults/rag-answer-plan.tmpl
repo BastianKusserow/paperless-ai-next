@@ -6,13 +6,6 @@ Language hint: {{ context.languageHint }}.
 Question:
 {{ context.question }}
 
-{% if context.conversationHistory[0] %}
-Conversation:
-{% for msg in context.conversationHistory %}
-{{ msg.role }}: {{ msg.content | truncate: 240 }}
-{% endfor %}
-{% endif %}
-
 Available sources:
 {% for src in context.sources %}
 [{{ src.index }}] {{ src.title }}{% if src.correspondent %} - {{ src.correspondent }}{% endif %}{% if src.date %} - {{ src.date }}{% endif %}{% if src.tags %} - Tags: {{ src.tags }}{% endif %}

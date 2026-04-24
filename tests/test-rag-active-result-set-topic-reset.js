@@ -5,10 +5,12 @@ const ragService = require('../services/ragService');
 async function run() {
   const originalGetService = AIServiceFactory.getService;
   const originalGetClient = ragService._getClient;
+  const originalTurnIntentV2Enabled = ragService.turnIntentV2Enabled;
   let contextCalls = 0;
 
   try {
     ragService.chatState.clear();
+    ragService.turnIntentV2Enabled = true;
 
     ragService._getClient = async () => ({
       post: async (_url, body) => {
@@ -71,6 +73,7 @@ async function run() {
   } finally {
     AIServiceFactory.getService = originalGetService;
     ragService._getClient = originalGetClient;
+    ragService.turnIntentV2Enabled = originalTurnIntentV2Enabled;
     ragService.chatState.clear();
   }
 }

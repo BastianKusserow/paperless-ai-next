@@ -4,13 +4,6 @@ Today is {{ context.currentDate }}.
 Current datetime is {{ context.currentDateTime }}.
 Language hint: {{ context.languageHint }}.
 
-{% if context.conversationHistory[0] %}
-Conversation so far:
-{% for msg in context.conversationHistory %}
-{{ msg.role }}: {{ msg.content | truncate: 300 }}
-{% endfor %}
-{% endif %}
-
 Current user question:
 {{ context.question }}
 

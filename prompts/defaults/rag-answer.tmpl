@@ -6,13 +6,6 @@ Language policy: answer in the same language as the user's question unless instr
 Question:
 {{ context.question }}
 
-{% if context.conversationHistory[0] %}
-Conversation:
-{% for msg in context.conversationHistory %}
-{{ msg.role }}: {{ msg.content | truncate: 300 }}
-{% endfor %}
-{% endif %}
-
 {% if context.effectiveFilters %}
 Effective filters applied:
 {% if context.effectiveFilters.from_date %}from_date: {{ context.effectiveFilters.from_date }}

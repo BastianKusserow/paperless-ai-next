@@ -59,6 +59,7 @@ const TESTS = {
   'rag-escalation-cap': 'test-rag-escalation-cap.js',
   'rag-payment-heuristic-escalation': 'test-rag-payment-heuristic-escalation.js',
   'rag-debug-trace-shape': 'test-rag-debug-trace-shape.js',
+  'rag-turn-intent-hybrid': 'test-rag-turn-intent-hybrid.js',
   'rag-custom-provider-empty-response': 'test-rag-custom-provider-empty-response.js',
   'updated-service': 'test-updated-service.js',
   'ssrf-url-validation': 'test-ssrf-url-validation.js',
@@ -91,6 +92,7 @@ const AREAS = {
     'rag-escalation-cap',
     'rag-payment-heuristic-escalation',
     'rag-debug-trace-shape',
+    'rag-turn-intent-hybrid',
     'rag-custom-provider-empty-response'
   ],
   security: [

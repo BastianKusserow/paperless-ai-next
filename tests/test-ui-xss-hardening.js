@@ -37,7 +37,7 @@ function run() {
 
   assertIncludes(
     ragContent,
-    'const safeMessage = escapeHtml(message);',
+    'let safeMessage = escapeHtml(processedMessage);',
     'RAG assistant answer must be escaped before HTML formatting'
   );
   assertIncludes(

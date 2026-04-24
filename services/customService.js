@@ -407,6 +407,29 @@ class CustomOpenAIService {
     try {
       this.initialize();
 
+      const providedMessages = Array.isArray(options.messages)
+        ? options.messages
+            .filter((message) => message && (message.role === 'system' || message.role === 'user' || message.role === 'assistant'))
+            .map((message) => ({
+              role: message.role,
+              content: typeof message.content === 'string' ? message.content : String(message.content || '')
+            }))
+            .filter((message) => message.content.trim().length > 0)
+        : [];
+
+      const requestMessages = providedMessages.length > 0
+        ? providedMessages
+        : [
+            {
+              role: 'user',
+              content: String(prompt || '')
+            }
+          ];
+
+      const promptTokenSource = requestMessages
+        .map((message) => `${message.role}: ${message.content}`)
+        .join('\n');
+
       fetch("http://host.docker.internal:4097/debug", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -414,7 +437,8 @@ class CustomOpenAIService {
           label: "custom-generateText-start",
           data: {
             model: config.custom.model,
-            promptPreview: String(prompt || '').slice(0, 1200),
+            promptPreview: promptTokenSource.slice(0, 1200),
+            messageCount: requestMessages.length,
             responseFormat: options.responseFormat || null,
             enableThinking: typeof options.enableThinking === 'boolean' ? options.enableThinking : true,
             returnMessageParts: Boolean(options.returnMessageParts),
@@ -430,7 +454,7 @@ class CustomOpenAIService {
       const model = config.custom.model;
       const maxContextTokens = Number(config.tokenLimit) || 128000;
       const desiredCompletionTokens = Number(options.maxCompletionTokens) || Number(config.responseTokens) || 1000;
-      const promptTokens = await calculateTokens(prompt, model);
+      const promptTokens = await calculateTokens(promptTokenSource, model);
       const availableCompletionTokens = Math.max(1, maxContextTokens - promptTokens - 64);
       const maxCompletionTokens = Math.max(1, Math.min(desiredCompletionTokens, availableCompletionTokens));
 
@@ -443,12 +467,7 @@ class CustomOpenAIService {
 
       const requestBody = {
         model: config.custom.model,
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
+        messages: requestMessages,
         temperature: options.temperature ?? 0.7,
         max_tokens: maxCompletionTokens
       };
