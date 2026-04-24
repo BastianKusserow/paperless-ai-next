@@ -233,11 +233,13 @@
         if (indexingRunning) return;
 
         initializeRequested = true;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
         try {
             await fetch('/api/rag/initialize', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken || ''
                 },
                 body: JSON.stringify({ force: false })
             });
