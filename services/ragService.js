@@ -664,9 +664,6 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
     if (/\b(last month|last week|today|this year|gestern|letzte woche|letzten monat|dieses jahr|\d{4})\b/i.test(normalized)) {
       tokens.add('date');
     }
-    if (/\b(contract|invoice|receipt|statement|versicherung|vertrag|rechnung|beleg|kontoauszug)\b/i.test(normalized)) {
-      tokens.add('document_type');
-    }
     if (/\b(paid|unpaid|overdue|open|offen|bezahlt|fällig|remaining|sum|total|noch zahlen)\b/i.test(normalized)) {
       tokens.add('payment_status');
     }
@@ -767,7 +764,13 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
     let constraintOverlap = 0.6;
     if (questionConstraintTokens.size > 0) {
       let overlapCount = 0;
+      let tagMismatchCount = 0;
       for (const token of questionConstraintTokens) {
+        if (token.startsWith('tag:')) {
+          if (!activeConstraintTokens.has(token)) {
+            tagMismatchCount += 1;
+          }
+        }
         if (activeConstraintTokens.has(token)) {
           overlapCount += 1;
         }
@@ -796,9 +799,9 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
 
   scoreTurnStrategy(features = {}) {
     const weights = {
-      semantic: 0.35,
+      semantic: 0.30,
       constraints: 0.30,
-      answerability: 0.25,
+      answerability: 0.20,
       followup: 0.10,
       noveltyPenalty: 0.40
     };
@@ -820,7 +823,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       };
     }
 
-    if ((features.followupLinguistic || 0) >= 1 && (features.noveltyPenalty || 0) <= 0.35 && (features.answerability || 0) >= 0.6) {
+    if ((features.followupLinguistic || 0) >= 1 && (features.noveltyPenalty || 0) <= 0.30 && (features.answerability || 0) >= 0.6) {
       return {
         intent: 'reuse_active_set',
         confidence: Math.max(0.7, boundedReuseScore),
