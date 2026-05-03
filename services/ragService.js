@@ -178,7 +178,9 @@ class RagService {
     }
 
     const state = this.chatState.get(chatId);
-    state.lastUpdatedAt = Date.now();
+    if (state) {
+      state.lastUpdatedAt = Date.now();
+    }
     return state;
   }
 

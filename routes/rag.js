@@ -674,7 +674,11 @@ router.post('/prompts/:id/preview', async (req, res) => {
           'en'
         );
       } else {
-        context = promptTemplateService.getSampleContext(id) || {};
+        context = promptTemplateService.getSampleContext(id);
+        if (!context) {
+          console.warn(`[prompts/preview] No sample context for template id '${id}' in live context mode; falling back to empty context`);
+          context = {};
+        }
       }
     } else {
       context = promptTemplateService.getSampleContext(id);

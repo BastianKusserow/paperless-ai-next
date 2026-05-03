@@ -2663,7 +2663,11 @@ class PromptSettingsManager {
             const resetId = this.currentTemplate.id;
             await this.loadTemplates();
             const refreshed = this.templates.find(t => t.id === resetId);
-            await this.selectTemplate(refreshed || this.currentTemplate);
+            if (refreshed) {
+                await this.selectTemplate(refreshed);
+            } else {
+                console.warn('Could not re-select template after reset; template not found in refreshed list:', resetId);
+            }
         } catch (error) {
             console.error('Reset error:', error);
             Swal.fire({
