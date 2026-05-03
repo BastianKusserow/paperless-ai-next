@@ -128,6 +128,39 @@ class RagService {
     this.maxRetrievalSources = Number(process.env.RAG_MAX_RETRIEVAL_SOURCES || 8);
     this.maxSourcesPerQuery = Number(process.env.RAG_MAX_SOURCES_PER_QUERY || 5);
     this.documentContentCache = new Map();
+    this.maxChatStates = Number(process.env.RAG_MAX_CHAT_STATES || 200);
+    this.chatStateTtlMs = Number(process.env.RAG_CHAT_STATE_TTL_MS || 3600000); // 1 hour default
+    this.maxDocumentCacheEntries = Number(process.env.RAG_MAX_DOC_CACHE_ENTRIES || 500);
+    setInterval(() => this._evictStaleChatStates(), 300000); // cleanup every 5 minutes
+  }
+
+  _evictStaleChatStates() {
+    const now = Date.now();
+    const ttl = this.chatStateTtlMs;
+    for (const [chatId, state] of this.chatState) {
+      if (now - (state.lastUpdatedAt || 0) > ttl) {
+        this.chatState.delete(chatId);
+      }
+    }
+    // If still over max size, evict oldest entries
+    if (this.chatState.size > this.maxChatStates) {
+      const sorted = [...this.chatState.entries()].sort(
+        (a, b) => (a[1].lastUpdatedAt || 0) - (b[1].lastUpdatedAt || 0)
+      );
+      const toDelete = sorted.slice(0, this.chatState.size - this.maxChatStates);
+      for (const [chatId] of toDelete) {
+        this.chatState.delete(chatId);
+      }
+    }
+    // Evict document content cache if over limit (LRU not tracked, remove arbitrary entries)
+    if (this.documentContentCache.size > this.maxDocumentCacheEntries) {
+      const keysToDelete = [...this.documentContentCache.keys()].slice(
+        0, this.documentContentCache.size - this.maxDocumentCacheEntries
+      );
+      for (const key of keysToDelete) {
+        this.documentContentCache.delete(key);
+      }
+    }
   }
 
   async _getClient() {
@@ -144,7 +177,9 @@ class RagService {
       });
     }
 
-    return this.chatState.get(chatId);
+    const state = this.chatState.get(chatId);
+    state.lastUpdatedAt = Date.now();
+    return state;
   }
 
   get conversationHistory() {
@@ -669,26 +704,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       languageHint
     );
     const prompt = promptTemplateService.render('rag.answer_plan', plannerContext);
-    fetch("http://host.docker.internal:4097/debug", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        label: "rag-planAnswerEvidence-start",
-        data: {
-          chatId,
-          question,
-          finalFilters,
-          sourceCount: Array.isArray(sources) ? sources.length : 0,
-          sourcePreview: Array.isArray(sources) ? sources.slice(0, 5).map((source) => ({
-            index: source.index,
-            title: source.title,
-            tags: source.tags,
-            snippet: String(source.snippet || '').slice(0, 300)
-          })) : [],
-          promptPreview: String(prompt || '').slice(0, 4000)
-        }
-      })
-    }).catch(() => {});
+    
     let plannerPayload;
     try {
       plannerPayload = await aiService.generateText(prompt, {
@@ -722,19 +738,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       };
     }
 
-    fetch("http://host.docker.internal:4097/debug", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        label: "rag-planAnswerEvidence-result",
-        data: {
-          chatId,
-          rawResponse: String(rawResponse || '').slice(0, 4000),
-          plannerResult,
-          providerDiagnostics: plannerPayload?.providerDiagnostics || null
-        }
-      })
-    }).catch(() => {});
+    
 
     if (debug) {
       this.appendDebugTrace(chatId, {
@@ -818,20 +822,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       }
 
       const turnIntent = this.classifyTurnIntent(question, chatId);
-      fetch("http://host.docker.internal:4097/debug", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "rag-askQuestion-turn-intent",
-          data: {
-            chatId,
-            question,
-            intent: turnIntent.intent,
-            reason: turnIntent.reason,
-            hasActiveResultSet: Boolean(this.getActiveResultSet(chatId))
-          }
-        })
-      }).catch(() => {});
+      
       if (debug) {
         this.appendDebugTrace(chatId, {
           stage: 'turn_intent',
@@ -892,27 +883,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         });
       }
 
-      fetch("http://host.docker.internal:4097/debug", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "rag-askQuestion-sources-selected",
-          data: {
-            chatId,
-            sourceOrigin: turnIntent.intent === 'reuse_active_set' ? 'active_result_set' : 'fresh_retrieval',
-            finalQuestion,
-            retrievalQueries,
-            finalFilters,
-            sourceCount: Array.isArray(sources) ? sources.length : 0,
-            sources: Array.isArray(sources) ? sources.slice(0, 5).map((source) => ({
-              index: source.index,
-              title: source.title,
-              tags: source.tags,
-              snippet: String(source.snippet || '').slice(0, 250)
-            })) : []
-          }
-        })
-      }).catch(() => {});
+      
 
       if (debug) {
         this.appendDebugTrace(chatId, {
@@ -963,22 +934,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         });
       }
 
-      fetch("http://host.docker.internal:4097/debug", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "rag-askQuestion-escalation-decision",
-          data: {
-            chatId,
-            heuristicIndexes,
-            requestedIndexes,
-            shouldEscalate,
-            plannerNeedsDeeperEvidence: plannerResult.needs_deeper_evidence,
-            plannerReason: plannerResult.reason,
-            mixedPaymentSignals: this.hasMixedPaymentSignals(sources)
-          }
-        })
-      }).catch(() => {});
+      
 
       const aiService = AIServiceFactory.getService();
       const history = this.getHistory(chatId);
@@ -1015,19 +971,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         });
       }
 
-      fetch("http://host.docker.internal:4097/debug", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "rag-askQuestion-final-prompt",
-          data: {
-            chatId,
-            mode: shouldEscalate && selectedDocuments.length > 0 ? 'deep' : 'lightweight',
-            selectedDocumentCount: selectedDocuments.length,
-            promptPreview: String(prompt || '').slice(0, 4000)
-          }
-        })
-      }).catch(() => {});
+      
 
       let answer;
       let reasoning = '';
@@ -1054,20 +998,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
         answer = plannerResult.answer;
       }
 
-      fetch("http://host.docker.internal:4097/debug", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "rag-askQuestion-final-response",
-          data: {
-            chatId,
-            answer: String(answer || '').slice(0, 3000),
-            reasoning: String(reasoning || '').slice(0, 3000),
-            providerDiagnostics,
-            usedPlannerFallback: (!answer || looksLikeGarbageAnswer(answer)) && !shouldEscalate
-          }
-        })
-      }).catch(() => {});
+      
       
       // Add to conversation history for follow-up handling
       this.addToHistoryForChat(chatId, 'user', question);
@@ -1091,19 +1022,7 @@ If no date range is specified, use {"from_date": "", "to_date": ""}. Output ONLY
       
       return result;
     } catch (error) {
-      fetch("http://host.docker.internal:4097/debug", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "rag-askQuestion-error",
-          data: {
-            chatId,
-            question,
-            error: error.message,
-            stack: error.stack
-          }
-        })
-      }).catch(() => {});
+      
       console.error('Error in askQuestion:', error);
       throw new Error("An error occurred while processing your question. Please try again later.");
     }

@@ -153,7 +153,7 @@ def _resolve_paperless_config() -> Tuple[Optional[str], Optional[str]]:
                 current = os.getenv(k)
                 if not current or _is_missing_or_placeholder(current):
                     os.environ[k] = v or ''
-                    logger.debug(f"Set {k}={v[:20] if v and len(v) > 20 else v} from runtime-overrides.json")
+                    logger.debug(f"Set {k}=[SET] from runtime-overrides.json")
         except Exception as e:
             logger.warning(f"Failed to read runtime-overrides.json: {e}")
     
@@ -168,7 +168,7 @@ def _resolve_paperless_config() -> Tuple[Optional[str], Optional[str]]:
             current = os.getenv(k)
             if not current or _is_missing_or_placeholder(current):
                 os.environ[k] = v or ''
-                logger.debug(f"Set {k}={v[:20] if v and len(v) > 20 else v}...")
+                logger.debug(f"Set {k}=[SET] from env file")
 
     paperless_api_url = (
         os.getenv("PAPERLESS_API_URL")
@@ -179,7 +179,7 @@ def _resolve_paperless_config() -> Tuple[Optional[str], Optional[str]]:
     paperless_token = os.getenv("PAPERLESS_TOKEN") or os.getenv("PAPERLESS_API_TOKEN") or os.getenv("PAPERLESS_APIKEY")
     
     # Debug: log what we got
-    logger.warning(f"DEBUG: After env resolution - PAPERLESS_URL={paperless_api_url}, PAPERLESS_TOKEN={'[SET]' if paperless_token else '[NOT SET]'}")
+    logger.debug(f"After env resolution - PAPERLESS_URL={paperless_api_url}, PAPERLESS_TOKEN={'[SET]' if paperless_token else '[NOT SET]'}")
 
     if paperless_api_url:
         paperless_api_url = paperless_api_url.strip()
@@ -1389,7 +1389,7 @@ class SearchEngine:
             doc_id = str(result["id"])
             rrf_scores[doc_id] = rrf_scores.get(doc_id, 0) + (1 / (RRF_K + rank))
             # Store first occurrence of result data
-            if doc_id not in [r.get("id") for r in results_map.values()] if results_map else True:
+            if doc_id not in results_map:
                 results_map[doc_id] = {**result, "id": doc_id, "source": "bm25", "rrf_rank": rank}
         
         # Process semantic results
@@ -1767,7 +1767,7 @@ async def startup_event():
         # Verify loaded status values are consistent
         logger.info(f"Loaded state has documents_count: {global_state.indexing_status.documents_count}")
         
-        # Überprüfen, ob .env-Datei existiert
+        # Check if .env file exists
         env_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', '.env')
         migrated_env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', '.env.migrated')
         # Check both .env and .env.migrated for runtime-first mode
@@ -1792,14 +1792,7 @@ async def startup_event():
             logger.info("Please edit the .env file with your Paperless-NGX API configuration")
             logger.warning("Starting with limited functionality due to missing API configuration")
             
-            # Trotzdem fortfahren mit eingeschränkter Funktionalität
-            global_state.system_status.server_up = True
-            global_state.indexing_status.message = "API configuration missing in .env file"
-            global_state.save_state()
-            return
-            logger.warning("Starting with limited functionality due to missing API configuration")
-            
-            # Trotzdem fortfahren mit eingeschränkter Funktionalität
+            # Continue with limited functionality
             global_state.system_status.server_up = True
             global_state.indexing_status.message = "API configuration missing in .env file"
             global_state.save_state()

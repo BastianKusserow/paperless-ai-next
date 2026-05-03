@@ -2612,7 +2612,12 @@ class PromptSettingsManager {
                 showConfirmButton: false
             });
 
+            const savedId = this.currentTemplate.id;
             await this.loadTemplates();
+            const refreshed = this.templates.find(t => t.id === savedId);
+            if (refreshed) {
+                await this.selectTemplate(refreshed);
+            }
         } catch (error) {
             console.error('Save error:', error);
             Swal.fire({
@@ -2655,8 +2660,10 @@ class PromptSettingsManager {
                 showConfirmButton: false
             });
 
+            const resetId = this.currentTemplate.id;
             await this.loadTemplates();
-            await this.selectTemplate(this.currentTemplate);
+            const refreshed = this.templates.find(t => t.id === resetId);
+            await this.selectTemplate(refreshed || this.currentTemplate);
         } catch (error) {
             console.error('Reset error:', error);
             Swal.fire({

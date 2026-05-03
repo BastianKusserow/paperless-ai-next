@@ -407,21 +407,7 @@ class CustomOpenAIService {
     try {
       this.initialize();
 
-      fetch("http://host.docker.internal:4097/debug", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "custom-generateText-start",
-          data: {
-            model: config.custom.model,
-            promptPreview: String(prompt || '').slice(0, 1200),
-            responseFormat: options.responseFormat || null,
-            enableThinking: typeof options.enableThinking === 'boolean' ? options.enableThinking : true,
-            returnMessageParts: Boolean(options.returnMessageParts),
-            maxCompletionTokens: options.maxCompletionTokens || null
-          }
-        })
-      }).catch(() => {});
+      
 
       if (!this.client) {
         throw new Error('Custom OpenAI client not initialized - missing API key');
@@ -471,35 +457,9 @@ class CustomOpenAIService {
       const message = response?.choices?.[0]?.message;
       const messageParts = extractChatMessageParts(message, 'Custom OpenAI');
       const generatedText = messageParts.text || extractChatMessageContent(message, 'Custom OpenAI');
-      fetch("http://host.docker.internal:4097/debug", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "custom-generateText-response",
-          data: {
-            usage: response?.usage || null,
-            finishReason: response?.choices?.[0]?.finish_reason || null,
-            rawMessage: message || null,
-            extractedText: generatedText || '',
-            extractedContent: messageParts.content || '',
-            extractedReasoning: messageParts.reasoningContent || ''
-          }
-        })
-      }).catch(() => {});
+      
       if (!generatedText) {
-        fetch("http://host.docker.internal:4097/debug", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            label: "custom-generateText-empty-content",
-            data: {
-              usage: response?.usage || null,
-              rawMessage: message || null,
-              responseFormat: options.responseFormat || null,
-              enableThinking: typeof options.enableThinking === 'boolean' ? options.enableThinking : true
-            }
-          })
-        }).catch(() => {});
+        
         if (options.returnMessageParts) {
           return {
             text: '',
@@ -529,17 +489,7 @@ class CustomOpenAIService {
 
       return generatedText;
     } catch (error) {
-      fetch("http://host.docker.internal:4097/debug", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          label: "custom-generateText-error",
-          data: {
-            error: error.message,
-            stack: error.stack
-          }
-        })
-      }).catch(() => {});
+      
       console.error(`Error generating text with Custom OpenAI: ${error.message}`); console.debug(error);;
       throw error;
     }

@@ -18,10 +18,10 @@ COPY --chown=node:node public ./public/
 COPY --chown=node:node OPENAPI ./OPENAPI/
 COPY --chown=node:node scripts ./scripts/
 COPY --chown=node:node tests ./tests/
-COPY --chown=node:node schemas.js swagger.js ecosystem.config.js package.json ./
+COPY --chown=node:node schemas.js swagger.js ecosystem.config.js package.json package-lock.json ./
 
-# Install additional dependencies (extends base image node_modules)
-RUN npm install liquidjs
+# Install production dependencies from the lockfile for reproducible builds
+RUN npm ci --omit=dev
 
 # Make startup script executable
 RUN chmod +x start-services.sh docker-entrypoint.sh

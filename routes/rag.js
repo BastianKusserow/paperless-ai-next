@@ -99,10 +99,33 @@ router.post('/search', async (req, res) => {
  *             type: object
  *             required:
  *               - question
+ *               - chatId
  *             properties:
  *               question:
  *                 type: string
  *                 example: "Which invoices are overdue?"
+ *               chatId:
+ *                 type: string
+ *                 description: Unique identifier for the conversation session
+ *                 example: "chat-abc123"
+ *               debug:
+ *                 type: boolean
+ *                 description: Include debug trace in the response
+ *                 default: false
+ *               from_date:
+ *                 type: string
+ *                 format: date
+ *                 description: Filter documents created on or after this date (YYYY-MM-DD)
+ *                 example: "2026-01-01"
+ *               to_date:
+ *                 type: string
+ *                 format: date
+ *                 description: Filter documents created on or before this date (YYYY-MM-DD)
+ *                 example: "2026-04-30"
+ *               correspondent:
+ *                 type: string
+ *                 description: Filter documents by correspondent name
+ *                 example: "Acme Corp"
  *     responses:
  *       200:
  *         description: Answer generated successfully
@@ -111,7 +134,7 @@ router.post('/search', async (req, res) => {
  *             schema:
  *               type: object
  *       400:
- *         description: Missing required question
+ *         description: Missing required question or chatId
  *       500:
  *         description: Internal server error
  */
@@ -624,13 +647,35 @@ router.post('/prompts/:id/preview', async (req, res) => {
     let context;
     if (useLiveContext === 'true') {
       const chatId = normalizeOptionalString(req.query.chatId) || 'default';
-      context = promptTemplateService.buildRewriteContext(
-        'What invoices did I receive last month?',
-        ragService.getHistory(chatId).slice(-5),
-        {},
-        {},
-        'en'
-      );
+      const liveHistory = ragService.getHistory(chatId).slice(-5);
+      if (id === 'rag.query_rewrite') {
+        context = promptTemplateService.buildRewriteContext(
+          'What invoices did I receive last month?',
+          liveHistory,
+          {},
+          {},
+          'en'
+        );
+      } else if (id === 'rag.answer_plan' || id === 'rag.answer_lightweight') {
+        context = promptTemplateService.buildAnswerPlannerContext(
+          'What invoices did I receive last month?',
+          liveHistory,
+          {},
+          [],
+          'en'
+        );
+      } else if (id === 'rag.answer_final') {
+        context = promptTemplateService.buildAnswerContext(
+          'What invoices did I receive last month?',
+          liveHistory,
+          {},
+          [],
+          [],
+          'en'
+        );
+      } else {
+        context = promptTemplateService.getSampleContext(id) || {};
+      }
     } else {
       context = promptTemplateService.getSampleContext(id);
       if (!context) {
@@ -662,12 +707,19 @@ router.post('/prompts/:id/preview', async (req, res) => {
   }
 });
 
+function requireDebugRoutes(req, res, next) {
+  if (process.env.RAG_DEBUG_ROUTES !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  next();
+}
+
 /**
  * @swagger
  * /api/rag/test/query-rewrite:
  *   post:
  *     summary: Test query rewriting
- *     description: Test the query rewriting feature with conversation history
+ *     description: Test the query rewriting feature with conversation history. Only available when RAG_DEBUG_ROUTES=true.
  *     tags:
  *       - RAG
  *     security:
@@ -686,8 +738,10 @@ router.post('/prompts/:id/preview', async (req, res) => {
  *     responses:
  *       200:
  *         description: Rewritten queries
+ *       404:
+ *         description: Not found (RAG_DEBUG_ROUTES not enabled)
  */
-router.post('/test/query-rewrite', async (req, res) => {
+router.post('/test/query-rewrite', requireDebugRoutes, async (req, res) => {
   try {
     const { query } = req.body;
     
@@ -718,7 +772,7 @@ router.post('/test/query-rewrite', async (req, res) => {
  *       200:
  *         description: Conversation history
  */
-router.get('/test/history', async (req, res) => {
+router.get('/test/history', requireDebugRoutes, async (req, res) => {
   try {
     const chatId = normalizeOptionalString(req.query.chatId) || 'default';
     res.json({
@@ -748,7 +802,7 @@ router.get('/test/history', async (req, res) => {
  *       200:
  *         description: History cleared
  */
-router.delete('/test/history', async (req, res) => {
+router.delete('/test/history', requireDebugRoutes, async (req, res) => {
   try {
     const chatId = normalizeOptionalString(req.query.chatId) || 'default';
     ragService.clearHistoryForChat(chatId);
@@ -784,7 +838,7 @@ router.delete('/test/history', async (req, res) => {
  *       200:
  *         description: Search results with debug info
  */
-router.post('/test/search', async (req, res) => {
+router.post('/test/search', requireDebugRoutes, async (req, res) => {
   try {
     const { query } = req.body;
     
